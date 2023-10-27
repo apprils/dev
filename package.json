@@ -54,17 +54,17 @@
     "yaml": "^2.3.3"
   },
   "devDependencies": {
-    "@appril/pgts": "^0.2.0",
-    "@appril/scripts": "^0.2.0",
+    "@appril/pgts": "^0.2.2",
+    "@appril/scripts": "^0.2.2",
     "@types/fs-extra": "^11.0.3",
     "@types/mustache": "^4.2.4",
-    "@types/node": "^20.8.8",
+    "@types/node": "^20.8.9",
     "esbuild": "^0.19.5",
     "path-scurry": "^1.10.1",
     "typescript": "^5.2.2",
     "vite": "^4.5.0"
   },
   "peerDependencies": {
-    "@appril/scripts": "^0.2.0"
+    "@appril/scripts": "^0.2.2"
   }
 }
