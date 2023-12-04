@@ -35,17 +35,17 @@ type Options = {
   viewsDir: string;
   storesDir: string;
   apiDir: string;
+  fetchDir: string;
+  importBase: string;
   extraFiles: Record<string, ExtraFileSetup>;
   templates: Partial<TemplateMap>;
 }
-
-type TypeImport = { import: string; from: string }
 
 type ViewDefinition = {
   params?: string;
   meta?: any;
   options?: Record<string, any>;
-  env?: { api?: string; type?: string | TypeImport };
+  env?: string | boolean;
 }
 
 /** {viewsDir}/_views.yml schema:
@@ -98,6 +98,8 @@ export function vitePluginApprilViews(
     viewsDir = "views",
     storesDir = "stores",
     apiDir = "api",
+    fetchDir = "fetch",
+    importBase = "@",
     extraFiles = {},
     templates: optedTemplates = {},
   } = opts
@@ -125,10 +127,6 @@ export function vitePluginApprilViews(
 
     const views: ExportedView[] = []
 
-    const typeImports: Record<string, TypeImport> = {}
-
-    const envRoutes: Record<string, {}> = {}
-
     for (const [ viewPath, viewDefinition ] of viewEntries) {
 
       const importPath = sanitizePath(viewPath).replace(/\/+$/, "")
@@ -143,30 +141,22 @@ export function vitePluginApprilViews(
 
       let envApi: string | undefined
 
-      if (env) {
-        envApi = env.api || join(viewPath, "env")
-        envRoutes[envApi] = {}
+      if (typeof env === "string") {
+        envApi = env
       }
-
-      let envType = "Record<string, any>"
-
-      if (typeof env?.type === "string") {
-        envType = env.type
-      }
-      else if (env?.type?.import) {
-        envType = env.type.import
-        typeImports[env.type.import] = env.type
+      else if (env === true) {
+        envApi = join(viewPath, "env")
       }
 
       const view: View = {
         name: importPath,
+        importName: importPath.replace(/\W/g, "_"),
         path,
         params: String(viewDefinition.params || ""),
         meta: JSON.stringify("meta" in viewDefinition ? viewDefinition.meta : {}),
         options: JSON.stringify("options" in viewDefinition ? viewDefinition.options : {}),
         importPath: importPath + suffix,
         file: importPath + suffix,
-        envType,
         envApi,
       }
 
@@ -270,9 +260,10 @@ export function vitePluginApprilViews(
 
       const content = render(templates.envStore, {
         BANNER,
-        views,
-        typeImports: Object.values(typeImports),
-        importFetch: views.some((e) => e.envApi),
+        viewsWithEnvApi: views.filter((e) => e.envApi),
+        apiDir,
+        fetchDir,
+        importBase,
       })
 
       await fsx.outputFile(
@@ -285,9 +276,16 @@ export function vitePluginApprilViews(
 
     {
 
+      const reducer = (map: Record<string, {}>, { envApi }: View) => ({
+        ...map,
+        ...envApi
+          ? { [envApi]: {} }
+          : {}
+      })
+
       const content = [
         BANNER.trim().replace(/^/gm, "#"),
-        stringify(envRoutes),
+        stringify(views.reduce(reducer, {})),
       ].join("\n")
 
       await fsx.outputFile(
