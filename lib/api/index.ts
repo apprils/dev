@@ -108,10 +108,10 @@ export async function vitePluginApprilApi(
   const rootPath = (...path: string[]) => resolve(String(process.env.PWD), join(...path))
 
   // adding custom templates and extraFiles templates to watchlist
-  const watchedFiles = [
+  const watchedFiles = new Set([
     ...Object.values({ ...opts.templates }),
     ...Object.values(extraFiles).map((e) => typeof e === "string" ? e : e.template),
-  ] as string[]
+  ])
 
   async function generateFiles({ root }: ResolvedConfig) {
 
@@ -155,9 +155,7 @@ export async function vitePluginApprilApi(
           routeEntries.push([ path, setup || {} ])
         }
 
-        if (!watchedFiles.includes(filePath)) {
-          watchedFiles.push(filePath)
-        }
+        watchedFiles.add(filePath)
 
       }
 
@@ -240,9 +238,7 @@ export async function vitePluginApprilApi(
 
       }
 
-      if (!watchedFiles.includes(routeFile)) {
-        watchedFiles.push(routeFile)
-      }
+      watchedFiles.add(routeFile)
 
     }
 
@@ -361,12 +357,14 @@ export async function vitePluginApprilApi(
 
     configureServer(server) {
 
-      if (watchedFiles.length) {
+      const files = [ ...watchedFiles ]
 
-        server.watcher.add(watchedFiles)
+      if (files.length) {
+
+        server.watcher.add(files)
 
         server.watcher.on("change", function(file) {
-          if (watchedFiles.some((path) => file.includes(path))) {
+          if (files.some((path) => file.includes(path))) {
             return generateFiles(server.config)
           }
         })
