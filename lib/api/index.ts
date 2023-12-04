@@ -9,29 +9,40 @@ import { parse } from "yaml";
 
 import { BANNER, render } from "../render";
 import { sanitizePath } from "../base";
+import { parseFile } from "./ast";
 
 import routeTpl from "./templates/route.tpl";
 import routesTpl from "./templates/routes.tpl";
-import fetchTpl from "./templates/fetch.tpl";
 import urlmapTpl from "./templates/urlmap.tpl";
+
+import fetchTpl from "./templates/fetch.tpl";
+import fetchIndexTpl from "./templates/fetch-index.tpl";
 
 import type { ExtraFileSetup, ExtraFileEntry } from "../@types";
 
 const defaultTemplates = {
   route: routeTpl,
   routes: routesTpl,
-  fetch: fetchTpl,
   urlmap: urlmapTpl,
 }
 
-type TemplateName = keyof typeof defaultTemplates
-type TemplateMap = Record<TemplateName | string, string>
-
 type Options = {
-  apiDir: string,
+  apiDir: string;
+  fetchDir: string;
+  fetchFilter: (r: Route) => boolean,
   sourceFiles: string | string[];
-  extraFiles: Record<string, ExtraFileSetup>,
-  templates: Partial<TemplateMap>,
+  extraFiles: Record<string, ExtraFileSetup>;
+  templates: Partial<Record<keyof typeof defaultTemplates, string>>;
+}
+
+type Route = {
+  name: string;
+  importName: string;
+  path: string;
+  importPath: string;
+  file: string;
+  meta: string;
+  serialized: string;
 }
 
 type RouteSetup = {
@@ -82,17 +93,21 @@ some-route:
  *    where key is the file to be generated and value is the template to be used.
  * @param {object} [opts.templates={}] - custom templates
  */
-export function vitePluginApprilApi(
+export async function vitePluginApprilApi(
   opts: Partial<Options> = {},
-): Plugin {
+): Promise<Plugin> {
 
   const {
     apiDir = "api",
+    fetchDir = "fetch",
+    fetchFilter = (r) => true,
     sourceFiles = "**/*_routes.yml",
     extraFiles = {},
   } = opts
 
-    // adding custom templates and extraFiles templates to watchlist
+  const rootPath = (...path: string[]) => resolve(String(process.env.PWD), join(...path))
+
+  // adding custom templates and extraFiles templates to watchlist
   const watchedFiles = [
     ...Object.values({ ...opts.templates }),
     ...Object.values(extraFiles).map((e) => typeof e === "string" ? e : e.template),
@@ -100,24 +115,26 @@ export function vitePluginApprilApi(
 
   async function generateFiles({ root }: ResolvedConfig) {
 
-    const rootPath = (...path: string[]) => resolve(root, join(...path))
-
     const sourceFolder = basename(root)
 
     // re-reading files every time
 
-    const customTemplates: Record<string, string> = {}
+    const readTemplate = (file: string) => readFile(
+      /^\//.test(file)
+        ? file
+        : rootPath(file),
+      "utf8"
+    )
 
-    const readTemplate = async (tpl: string) => {
-      return tpl in customTemplates
-        ? customTemplates[tpl]
-        : customTemplates[tpl] = await readFile(/^\//.test(tpl) ? tpl : rootPath(tpl), "utf8")
-    }
+    const templates = { ...defaultTemplates }
 
-    const templates: TemplateMap = { ...defaultTemplates }
+    const templateEntries = Object.entries({ ...opts.templates }) as [
+      name: keyof typeof defaultTemplates,
+      file: string
+    ][]
 
-    for (const [ name, file ] of Object.entries({ ...opts.templates })) {
-      templates[name as TemplateName] = await readTemplate(file as string)
+    for (const [ name, file ] of templateEntries) {
+      templates[name] = await readTemplate(file)
     }
 
     const routeEntries: [ name: string, setup: RouteSetup ][] = []
@@ -146,7 +163,7 @@ export function vitePluginApprilApi(
 
     }
 
-    const routes = []
+    const routes: Route[] = []
 
     for (const [ routePath, routeSetup ] of routeEntries) {
 
@@ -159,23 +176,27 @@ export function vitePluginApprilApi(
       // path should start with a slash
       const path = join("/", importPath.replace(/^index$/, ""))
 
-      const route = {
-        name: importPath,
-        path,
-        meta: JSON.stringify("meta" in routeSetup ? routeSetup.meta : {}),
-        importName: importPath.replace(/\W/g, "_"),
-        importPath,
-        file: importPath + suffix,
-      }
+      const name = importPath
+      const meta = JSON.stringify("meta" in routeSetup ? routeSetup.meta : {})
+      const importName = importPath.replace(/\W/g, "_")
+      const file = importPath + suffix
 
       const serialized = JSON.stringify({
-        name: route.name,
-        path: route.path,
+        name,
+        path,
       })
 
-      routes.push({ ...route, serialized })
+      const route: Route = {
+        name,
+        importName,
+        path,
+        importPath,
+        file,
+        meta,
+        serialized,
+      }
 
-      const routeFile = rootPath(apiDir, route.file)
+      const routeFile = rootPath(apiDir, file)
 
       if (!await fsx.pathExists(routeFile)) {
 
@@ -183,10 +204,44 @@ export function vitePluginApprilApi(
           ? await readTemplate(routeSetup.template)
           : templates.route
 
-        const content = render(template, { ...routeSetup, ...route })
+        const content = render(template, {
+          ...routeSetup,
+          ...route,
+        })
 
         await fsx.outputFile(routeFile, content, "utf8")
 
+      }
+
+      routes.push(route)
+
+      if (fetchFilter(route)) {
+
+        const {
+          typeDeclarations: fetchTypes,
+          endpoints: fetchEndpoints,
+        } = parseFile(await readFile(routeFile, "utf8"))
+
+        const content = render(fetchTpl, {
+          BANNER,
+          apiDir,
+          fetchDir,
+          sourceFolder,
+          fetchTypes,
+          fetchEndpoints,
+          ...route
+        })
+
+        await fsx.outputFile(
+          rootPath(fetchDir, "api", route.file),
+          content,
+          "utf8"
+        )
+
+      }
+
+      if (!watchedFiles.includes(routeFile)) {
+        watchedFiles.push(routeFile)
       }
 
     }
@@ -251,12 +306,12 @@ export function vitePluginApprilApi(
     for (const [ outfile, template ] of [
       [ rootPath(apiDir, "_routes.ts"), templates.routes ],
       [ rootPath(apiDir, "_urlmap.ts"), templates.urlmap ],
-      [ rootPath("fetch.ts"), templates.fetch ],
     ]) {
 
       const content = render(template, {
         BANNER,
         apiDir,
+        fetchDir,
         sourceFolder,
         routes,
       })
@@ -265,7 +320,38 @@ export function vitePluginApprilApi(
 
     }
 
+    {
+
+      const content = render(fetchIndexTpl, {
+        BANNER,
+        apiDir,
+        fetchDir,
+        sourceFolder,
+        routes: routes.filter(fetchFilter),
+      })
+
+      await fsx.outputFile(rootPath(fetchDir, "index.ts"), content, "utf8")
+
+    }
+
   }
+
+  // cleanup fetch files at start
+  await fsx.remove(rootPath(fetchDir))
+
+  const tsconfig = JSON.parse(await readFile(rootPath("tsconfig.json"), "utf8"))
+
+  await fsx.outputFile(
+    rootPath(fetchDir, "tsconfig.json"),
+    JSON.stringify({
+      extend: "../tsconfig.json",
+      compilerOptions: {
+        baseUrl: "..",
+        paths: tsconfig.compilerOptions.paths,
+        noUnusedLocals: false
+      }
+    }, null, 2)
+  )
 
   return {
 
