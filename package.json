@@ -42,7 +42,8 @@
     "postbuild": "tsc -p lib/tsconfig.json",
     "// ✨ publish": "",
     "prepub": "npm run build",
-    "pub": "npm pub"
+    "pub": "npm pub",
+    "postpub": "mkdir -p var/pub; npm pack --pack-destination var/pub"
   },
   "dependencies": {
     "@phenomnomnominal/tsquery": "^6.1.3",
