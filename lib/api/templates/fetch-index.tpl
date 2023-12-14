@@ -1,7 +1,7 @@
 {{BANNER}}
 
 {{#routes}}
-import {{importName}} from "./api/{{importPath}}";
+import {{importName}} from "./{{importPath}}";
 {{/routes}}
 
 export default {

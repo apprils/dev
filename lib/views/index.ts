@@ -240,6 +240,7 @@ export function vitePluginApprilViews(
 
       const content = render(template, {
         BANNER,
+        importBase,
         sourceFolder,
         views,
         viewsDir,

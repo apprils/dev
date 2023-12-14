@@ -6,13 +6,9 @@ import { defineStore } from "pinia";
 import fetch from "{{importBase}}/{{fetchDir}}";
 {{/viewsWithEnvApi.length}}
 
-{{#viewsWithEnvApi}}
-import { apiFactory as {{importName}}EnvApi } from "{{importBase}}/{{fetchDir}}/api/{{envApi}}";
-{{/viewsWithEnvApi}}
-
 export type State = {
 {{#viewsWithEnvApi}}
-  "{{name}}": Awaited<ReturnType<ReturnType<typeof {{importName}}EnvApi>["get"]>> | undefined;
+  "{{name}}": Awaited<ReturnType<typeof fetch["{{name}}"]["get"]>> | undefined;
 {{/viewsWithEnvApi}}
 }
 

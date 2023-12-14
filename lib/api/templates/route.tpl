@@ -1,5 +1,5 @@
 
-import { get } from "@/api";
+import { get } from "{{importBase}}/api";
 
 export default [
 

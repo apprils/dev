@@ -23,16 +23,33 @@ const METHODS = [
   "del",
 ]
 
+const METHODS_REGEX = new RegExp(`\\b(${ METHODS.join("|") })\\b`)
+
 export function parseFile(
   src: string,
 ) {
 
   const ast = tsquery.ast(src)
 
-  const middlewareNodes: CallExpression[] = tsquery.match(ast, "ExportAssignment ArrayLiteralExpression > CallExpression")
-  const importDeclarations: ImportDeclaration[] = tsquery.match(ast, "ImportDeclaration")
-  const interfaceDeclarations = tsquery.match(ast, "InterfaceDeclaration")
-  const typeAliasDeclarations = tsquery.match(ast, "TypeAliasDeclaration")
+  const middlewareNodes: CallExpression[] = tsquery.match(
+    ast,
+    "ExportAssignment ArrayLiteralExpression > CallExpression"
+  )
+
+  const importDeclarations: ImportDeclaration[] = tsquery.match(
+    ast,
+    "ImportDeclaration"
+  )
+
+  const interfaceDeclarations = tsquery.match(
+    ast,
+    "InterfaceDeclaration"
+  )
+
+  const typeAliasDeclarations = tsquery.match(
+    ast,
+    "TypeAliasDeclaration"
+  )
 
   const typeDeclarations = new Set
   const endpoints: Record<string, Entry[]> = {}
@@ -41,14 +58,18 @@ export function parseFile(
     ...importDeclarations,
   ]) {
 
-    const path = node.moduleSpecifier.getText()
+    const path = node.moduleSpecifier.getText().replace(/^\W|\W$/g, "")
 
-    node.importClause?.namedBindings?.forEachChild((e) => {
-      if ((e as ImportSpecifier).isTypeOnly || node.importClause?.isTypeOnly) {
-        const typeIdentifier = e.getText().replace(/^type\s+/, "")
-        typeDeclarations.add(`import type { ${ typeIdentifier } } from ${ path };`)
+    for (const spec of tsquery.match(node, "ImportSpecifier") as ImportSpecifier[]) {
+
+      if (node.importClause?.isTypeOnly) {
+        typeDeclarations.add(`import type { ${ spec.getText() } } from "${ path }";`)
       }
-    })
+      else if (spec.isTypeOnly) {
+        typeDeclarations.add(`import { ${ spec.getText() } } from "${ path }";`)
+      }
+
+    }
 
   }
 
@@ -61,9 +82,9 @@ export function parseFile(
 
   for (const node of middlewareNodes) {
 
-    const method = node.expression.getText()
+    const [ method ] = node.expression.getText().match(METHODS_REGEX) || []
 
-    if (!METHODS.includes(method)) {
+    if (!method || !METHODS.includes(method)) {
       continue
     }
 
