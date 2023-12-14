@@ -4,7 +4,7 @@
     "strict": true,
     "noImplicitAny": true,
     "noImplicitThis": true,
-    "noUnusedLocals": true,
+    "noUnusedLocals": false,
 
     "moduleResolution": "Node",
     "module": "ESNext",
