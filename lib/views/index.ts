@@ -35,7 +35,6 @@ type Options = {
   viewsDir: string;
   storesDir: string;
   apiDir: string;
-  fetchDir: string;
   importBase: string;
   extraFiles: Record<string, ExtraFileSetup>;
   templates: Partial<TemplateMap>;
@@ -98,7 +97,6 @@ export function vitePluginApprilViews(
     viewsDir = "views",
     storesDir = "stores",
     apiDir = "api",
-    fetchDir = "fetch",
     importBase = "@",
     extraFiles = {},
     templates: optedTemplates = {},
@@ -263,7 +261,6 @@ export function vitePluginApprilViews(
         BANNER,
         viewsWithEnvApi: views.filter((e) => e.envApi),
         apiDir,
-        fetchDir,
         importBase,
       })
 

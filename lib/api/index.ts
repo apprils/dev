@@ -1,11 +1,12 @@
 
-import { basename, resolve, join } from "path";
+import { dirname, basename, resolve, join } from "path";
 import { readFile } from "fs/promises";
 
 import { glob } from "glob";
 import type { Plugin, ResolvedConfig } from "vite";
 import fsx from "fs-extra";
 import { parse } from "yaml";
+import { transform } from "esbuild";
 
 import { BANNER, render } from "../render";
 import { sanitizePath } from "../base";
@@ -15,8 +16,9 @@ import routeTpl from "./templates/route.tpl";
 import routesTpl from "./templates/routes.tpl";
 import urlmapTpl from "./templates/urlmap.tpl";
 
-import fetchTpl from "./templates/fetch.tpl";
-import fetchIndexTpl from "./templates/fetch-index.tpl";
+import fetchModuleTpl from "./templates/fetch/module.tpl";
+import fetchIndexTpl from "./templates/fetch/module.d.tpl";
+import fetchVirtualIndexTpl from "./templates/fetch/virtual.d.tpl";
 
 import type { ExtraFileSetup, ExtraFileEntry } from "../@types";
 
@@ -29,7 +31,6 @@ const defaultTemplates = {
 type Options = {
   importBase: string;
   apiDir: string;
-  fetchDir: string;
   fetchFilter: (r: Route) => boolean,
   sourceFiles: string | string[];
   extraFiles: Record<string, ExtraFileSetup>;
@@ -44,6 +45,7 @@ type Route = {
   file: string;
   meta: string;
   serialized: string;
+  fetchModule: string;
 }
 
 type RouteSetup = {
@@ -103,7 +105,6 @@ export async function vitePluginApprilApi(
   const {
     importBase = "@",
     apiDir = "api",
-    fetchDir = "fetch",
     fetchFilter = (_r) => true,
     sourceFiles = "**/*_routes.yml",
     extraFiles = {},
@@ -116,6 +117,12 @@ export async function vitePluginApprilApi(
     ...Object.values({ ...opts.templates }),
     ...Object.values(extraFiles).map((e) => typeof e === "string" ? e : e.template),
   ])
+
+  const virtualMap: {
+    fetch: Record<string, string>;
+  } = {
+    fetch: {},
+  }
 
   async function generateFiles(
     { root }: ResolvedConfig,
@@ -209,6 +216,7 @@ export async function vitePluginApprilApi(
         file,
         meta,
         serialized,
+        fetchModule: "",
       }
 
       if (!await fsx.pathExists(route.file)) {
@@ -226,33 +234,31 @@ export async function vitePluginApprilApi(
 
       }
 
-      routes.push(route)
-
       if (fetchFilter(route)) {
 
         const {
           typeDeclarations: fetchTypes,
           endpoints: fetchEndpoints,
-        } = parseFile(await readFile(route.file, "utf8"))
+        } = parseFile(
+          await readFile(route.file, "utf8"),
+          { importBase, base: dirname(route.file.replace(rootPath(), "")) }
+        )
 
-        const content = render(fetchTpl, {
+        route.fetchModule = render(fetchModuleTpl, {
           BANNER,
           importBase,
           apiDir,
-          fetchDir,
           sourceFolder,
           fetchTypes,
           fetchEndpoints,
           ...route
         })
 
-        await fsx.outputFile(
-          rootPath(fetchDir, importPath + suffix),
-          content,
-          "utf8"
-        )
+        virtualMap.fetch[`fetch:${ route.name }`] = route.fetchModule
 
       }
+
+      routes.push(route)
 
     }
 
@@ -323,7 +329,6 @@ export async function vitePluginApprilApi(
         BANNER,
         importBase,
         apiDir,
-        fetchDir,
         sourceFolder,
         routes,
       })
@@ -334,27 +339,55 @@ export async function vitePluginApprilApi(
 
     {
 
+      const fetchRoutes = routes.filter(fetchFilter)
+
       const content = render(fetchIndexTpl, {
         BANNER,
         importBase,
         apiDir,
-        fetchDir,
         sourceFolder,
-        routes: routes.filter(fetchFilter),
+        routes: fetchRoutes,
       })
 
-      await fsx.outputFile(rootPath(fetchDir, "index.ts"), content, "utf8")
+      await fsx.outputFile(rootPath("fetch.d.ts"), content, "utf8")
+
+      virtualMap.fetch["fetch:"] = render(fetchVirtualIndexTpl, {
+        importBase,
+        apiDir,
+        sourceFolder,
+        routes: fetchRoutes,
+      })
 
     }
 
   }
 
-  // cleanup fetch files at start
-  await fsx.remove(rootPath(fetchDir))
-
   return {
 
     name: "vite-plugin-appril-api",
+
+    resolveId(id) {
+      if (virtualMap.fetch[id]) {
+        return id
+      }
+    },
+
+    load(id) {
+      if (virtualMap.fetch[id]) {
+        return {
+          code: virtualMap.fetch[id],
+          map: null,
+        }
+      }
+    },
+
+    transform(src, id) {
+      if (virtualMap.fetch[id]) {
+        return transform(src, {
+          loader: "ts",
+        })
+      }
+    },
 
     configResolved: generateFiles,
 

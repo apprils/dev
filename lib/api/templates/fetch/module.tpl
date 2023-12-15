@@ -1,4 +1,3 @@
-{{BANNER}}
 
 import {
   type Options,
