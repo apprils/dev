@@ -2,11 +2,14 @@
 import * as tsquery from "@phenomnomnominal/tsquery";
 
 import {
+  type Node,
   type CallExpression,
   type Expression,
   type ImportSpecifier,
   type ImportDeclaration,
   SyntaxKind,
+  isArrowFunction,
+  isFunctionExpression,
 } from "typescript";
 
 type Entry = {
@@ -31,7 +34,7 @@ export function parseFile(
 
   const ast = tsquery.ast(src)
 
-  const middlewareNodes: CallExpression[] = tsquery.match(
+  const callExpressions: CallExpression[] = tsquery.match(
     ast,
     "ExportAssignment ArrayLiteralExpression > CallExpression"
   )
@@ -80,7 +83,7 @@ export function parseFile(
     typeDeclarations.add(node.getText())
   }
 
-  for (const node of middlewareNodes) {
+  for (const node of callExpressions) {
 
     const [ method ] = node.expression.getText().match(METHODS_REGEX) || []
 
@@ -89,7 +92,27 @@ export function parseFile(
     }
 
     const args = argumentsMapper(node.arguments?.[0])
-    const bodyType = node.typeArguments?.[2]?.getText() || "unknown"
+
+    let bodyType 
+
+    if (node.typeArguments?.[2]) {
+      // BodyT provided as TypeArgument, like
+      // get<StateT, ContextT, BodyT>(...)
+      bodyType = node.typeArguments[2].getText()
+    }
+    else {
+
+      const handler = node.arguments.find(
+        (e) => isArrowFunction(e) || isFunctionExpression(e)
+      )
+
+      if (handler) {
+        // provided as explicit return type
+        // get(async (ctx): BodyT => {...})
+        bodyType = getReturnType(handler)
+      }
+
+    }
 
     if (!endpoints[method]) {
       endpoints[method] = []
@@ -98,7 +121,7 @@ export function parseFile(
     endpoints[method].push({
       method,
       args,
-      bodyType,
+      bodyType: bodyType || "unknown",
     })
 
   }
@@ -141,6 +164,34 @@ function argumentsMapper(exp: Expression) {
   }
 
   return args
+
+}
+
+function getReturnType(
+  node: Expression | Node,
+): string | undefined {
+
+  const [ typeReference ] = tsquery.match(
+    node,
+    "TypeReference,TypeLiteral,AnyKeyword"
+  )
+
+  if (typeReference) {
+
+    if (/^Promise(\s+)?</.test(typeReference.getText())) {
+
+      const [ wrappedType ] = tsquery.match(
+        typeReference,
+        "TypeReference:first-child,TypeLiteral:first-child,AnyKeyword:first-child"
+      )
+
+      return wrappedType?.getText()
+
+    }
+
+    return typeReference.getText()
+
+  }
 
 }
 
