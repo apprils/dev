@@ -174,7 +174,7 @@ function getReturnType(
   const [ typeReference ] = tsquery.match(
     node,
     "TypeReference,TypeLiteral,AnyKeyword"
-  )
+  ).filter((e) => e.parent === node)
 
   if (typeReference) {
 
