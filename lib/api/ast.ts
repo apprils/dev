@@ -1,4 +1,6 @@
 
+import { resolve, join } from "path";
+
 import * as tsquery from "@phenomnomnominal/tsquery";
 
 import {
@@ -30,6 +32,10 @@ const METHODS_REGEX = new RegExp(`\\b(${ METHODS.join("|") })\\b`)
 
 export function parseFile(
   src: string,
+  opt: {
+    importBase: string;
+    base: string;
+  },
 ) {
 
   const ast = tsquery.ast(src)
@@ -61,7 +67,11 @@ export function parseFile(
     ...importDeclarations,
   ]) {
 
-    const path = node.moduleSpecifier.getText().replace(/^\W|\W$/g, "")
+    let path = node.moduleSpecifier.getText().replace(/^\W|\W$/g, "")
+
+    if (/^\.\.?\/?/.test(path)) {
+      path = join(opt.importBase, resolve(opt.base, path))
+    }
 
     for (const spec of tsquery.match(node, "ImportSpecifier") as ImportSpecifier[]) {
 
