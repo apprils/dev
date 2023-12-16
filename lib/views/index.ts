@@ -17,8 +17,6 @@ import typedRoutesTpl from "./templates/typed-routes.tpl";
 import urlmapTpl from "./templates/urlmap.tpl";
 import envStoreTpl from "./templates/env-store.tpl";
 
-import type { ExtraFileSetup, ExtraFileEntry } from "../@types";
-
 const defaultTemplates = {
   view: viewTpl,
   routes: routesTpl,
@@ -36,7 +34,6 @@ type Options = {
   storesDir: string;
   apiDir: string;
   importBase: string;
-  extraFiles: Record<string, ExtraFileSetup>;
   templates: Partial<TemplateMap>;
 }
 
@@ -84,8 +81,6 @@ some-view:
  *    should contain _views.yml file
  * @param {string} [opts.storesDir="stores"] - path to stores folder
  * @param {string} [opts.apiDir="api"] - path to api folder
- * @param {object} [opts.extraFiles={}] - an optional map of extra files to be generated.
- *    where key is the file to be generated and value is the template to be used.
  * @param {object} [opts.templates={}] - custom templates
  */
 export function vitePluginApprilViews(
@@ -98,7 +93,6 @@ export function vitePluginApprilViews(
     storesDir = "stores",
     apiDir = "api",
     importBase = "@",
-    extraFiles = {},
     templates: optedTemplates = {},
   } = opts
 
@@ -171,63 +165,6 @@ export function vitePluginApprilViews(
       })
 
       views.push({ ...view, serialized })
-
-    }
-
-    const perViewExtraFiles: ExtraFileEntry[] = []
-    const globalExtraFiles: ExtraFileEntry[] = []
-
-    for (const [ outfile, setup ] of Object.entries(extraFiles)) {
-
-      const { template: tplfile, overwrite } = typeof setup === "string"
-        ? { template: setup, overwrite: true }
-        : setup
-
-      const template = await readFile(rootPath(tplfile), "utf8")
-
-      if (/\{\{.+\}\}/.test(outfile)) {
-        perViewExtraFiles.push({ outfile, template, overwrite })
-      }
-      else {
-        globalExtraFiles.push({ outfile, template, overwrite })
-      }
-
-    }
-
-    for (const { outfile, template, overwrite } of perViewExtraFiles) {
-
-      for (const view of views) {
-
-        const file = rootPath(render(outfile, view))
-
-        if (await fsx.pathExists(file) && !overwrite) {
-          continue
-        }
-
-        const content = render(template, {
-          sourceFolder,
-          view,
-          views,
-        })
-
-        await fsx.outputFile(file, content, "utf8")
-
-      }
-
-    }
-
-    for (const { outfile, template, overwrite } of globalExtraFiles) {
-
-      if (await fsx.pathExists(outfile) && !overwrite) {
-        continue
-      }
-
-      const content = render(template, {
-        sourceFolder,
-        views,
-      })
-
-      await fsx.outputFile(outfile, content, "utf8")
 
     }
 
@@ -304,11 +241,10 @@ export function vitePluginApprilViews(
 
     configureServer(server) {
 
-      // adding optedTemplates and extraFiles templates to watchlist
+      // adding optedTemplates to watchlist
 
       const watchedFiles = [
         ...Object.values(optedTemplates),
-        ...Object.values(extraFiles).map((e) => typeof e === "string" ? e : e.template),
       ]
 
       if (watchedFiles.length) {
