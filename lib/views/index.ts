@@ -33,7 +33,6 @@ type Options = {
   viewsDir: string;
   storesDir: string;
   apiDir: string;
-  importBase: string;
   templates: Partial<TemplateMap>;
 }
 
@@ -92,19 +91,18 @@ export function vitePluginApprilViews(
     viewsDir = "views",
     storesDir = "stores",
     apiDir = "api",
-    importBase = "@",
     templates: optedTemplates = {},
   } = opts
+
+  const rootPath = (...path: string[]) => resolve(String(process.env.PWD), join(...path))
+
+  const sourceFolder = basename(rootPath())
 
   const viewsFile = join(viewsDir, "_views.yml")
 
   async function generateFiles(
-    { root, base }: ResolvedConfig,
+    { base }: ResolvedConfig,
   ) {
-
-    const rootPath = (...path: string[]) => resolve(root, join(...path))
-
-    const sourceFolder = basename(root)
 
     // re-reading files every time
 
@@ -175,7 +173,6 @@ export function vitePluginApprilViews(
 
       const content = render(template, {
         BANNER,
-        importBase,
         sourceFolder,
         views,
         viewsDir,
@@ -196,9 +193,9 @@ export function vitePluginApprilViews(
 
       const content = render(templates.envStore, {
         BANNER,
-        viewsWithEnvApi: views.filter((e) => e.envApi),
+        sourceFolder,
         apiDir,
-        importBase,
+        viewsWithEnvApi: views.filter((e) => e.envApi),
       })
 
       await fsx.outputFile(

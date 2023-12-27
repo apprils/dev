@@ -3,7 +3,7 @@
 import { defineStore } from "pinia";
 
 {{#viewsWithEnvApi.length}}
-import fetch from "fetch:";
+import fetch from "{{sourceFolder}}/api/_fetch";
 {{/viewsWithEnvApi.length}}
 
 export type State = {
