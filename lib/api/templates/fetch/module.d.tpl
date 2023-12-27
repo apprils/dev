@@ -1,23 +1,25 @@
 {{BANNER}}
 
-{{#routes}}
-declare module "fetch:{{name}}" {
-{{fetchModule}}
+{{! ambient modules declarations; do not use global import/export here! }}
+
+{{#modules}}
+declare module "{{id}}" {
+{{code}}
 }
 
-{{/routes}}
+{{/modules}}
 
-declare module "fetch:" {
-  {{#routes}}
-  import {{importName}} from "fetch:{{name}}";
-  {{/routes}}
+declare module "{{defaultModuleId}}" {
 
-  export default {
-  {{#routes}}
-  get "{{name}}"() { return {{importName}} },
-  {{/routes}}
+{{#modules}}
+import {{importName}} from "{{id}}";
+{{/modules}}
 
-  }
+export default {
+  {{#modules}}
+  "{{name}}": {{importName}},
+  {{/modules}}
+}
 
 }
 

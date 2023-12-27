@@ -30,13 +30,16 @@ const METHODS = [
 
 const METHODS_REGEX = new RegExp(`\\b(${ METHODS.join("|") })\\b`)
 
-export function parseFile(
+export function extractTypedEndpoints(
   src: string,
   opt: {
-    importBase: string;
+    root: string;
     base: string;
   },
-) {
+): {
+  typeDeclarations: string[];
+  endpoints: { method: string; entries: Entry[]; }[];
+} {
 
   const ast = tsquery.ast(src)
 
@@ -60,17 +63,17 @@ export function parseFile(
     "TypeAliasDeclaration"
   )
 
-  const typeDeclarations = new Set
+  const typeDeclarations = new Set<string>
   const endpoints: Record<string, Entry[]> = {}
 
   for (const node of [
     ...importDeclarations,
   ]) {
 
-    let path = node.moduleSpecifier.getText().replace(/^\W|\W$/g, "")
+    let path = node.moduleSpecifier.getText().replace(/^\W|\W$/g, ""/** removing quotes */)
 
     if (/^\.\.?\/?/.test(path)) {
-      path = join(opt.importBase, resolve(opt.base, path))
+      path = join(opt.root, resolve(opt.base, path))
     }
 
     for (const spec of tsquery.match(node, "ImportSpecifier") as ImportSpecifier[]) {

@@ -1,7 +1,7 @@
 {{BANNER}}
 
 {{#routes}}
-import {{importName}} from "{{importBase}}/{{importPath}}";
+import {{importName}} from "{{sourceFolder}}/{{importPath}}";
 {{/routes}}
 
 type Meta = Record<string, any>

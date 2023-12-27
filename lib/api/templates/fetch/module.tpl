@@ -14,7 +14,12 @@ import { baseurl, apiurl } from "{{sourceFolder}}/config";
 {{.}}
 {{/fetchTypes}}
 
-export function apiFactory(api: FetchMapper) {
+let name = "{{name}}"
+let path = "{{path}}"
+
+const base = join(baseurl, apiurl, path)
+
+let apiFactory = function apiFactory(api: FetchMapper) {
   {{#fetchEndpoints}}
 
   {{#entries}}
@@ -43,13 +48,30 @@ export function apiFactory(api: FetchMapper) {
 
 }
 
-const base = join(baseurl, apiurl, "{{path}}")
+export { name, path, apiFactory }
 
-export default {
-  get name() { return "{{name}}" },
+const defaultExport = {
+  get name() { return name },
   get base() { return base },
   path: (...args: PathChunk[]) => urlBuilder(base, ...args),
   withOptions: (opts: Options) => apiFactory(fetch(base, opts)),
-  ...apiFactory(fetch(base))
 }
+
+export default new Proxy(
+  defaultExport,
+  {
+    get(target, prop) {
+
+      if (prop in target) {
+        return typeof target[prop] === "function"
+          ? function(this: any) { return target[prop].apply(this, arguments) }
+          : target[prop]
+      }
+
+      return apiFactory(fetch(base))[prop]
+
+    },
+    set: () => false,
+  }
+) as typeof defaultExport & ReturnType<typeof apiFactory>
 
