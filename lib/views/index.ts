@@ -17,8 +17,6 @@ import typedRoutesTpl from "./templates/typed-routes.tpl";
 import urlmapTpl from "./templates/urlmap.tpl";
 import envStoreTpl from "./templates/env-store.tpl";
 
-import type { ExtraFileSetup, ExtraFileEntry } from "../@types";
-
 const defaultTemplates = {
   view: viewTpl,
   routes: routesTpl,
@@ -35,17 +33,14 @@ type Options = {
   viewsDir: string;
   storesDir: string;
   apiDir: string;
-  extraFiles: Record<string, ExtraFileSetup>;
   templates: Partial<TemplateMap>;
 }
-
-type TypeImport = { import: string; from: string }
 
 type ViewDefinition = {
   params?: string;
   meta?: any;
   options?: Record<string, any>;
-  env?: { api?: string; type?: string | TypeImport };
+  env?: string | boolean;
 }
 
 /** {viewsDir}/_views.yml schema:
@@ -85,8 +80,6 @@ some-view:
  *    should contain _views.yml file
  * @param {string} [opts.storesDir="stores"] - path to stores folder
  * @param {string} [opts.apiDir="api"] - path to api folder
- * @param {object} [opts.extraFiles={}] - an optional map of extra files to be generated.
- *    where key is the file to be generated and value is the template to be used.
  * @param {object} [opts.templates={}] - custom templates
  */
 export function vitePluginApprilViews(
@@ -98,19 +91,18 @@ export function vitePluginApprilViews(
     viewsDir = "views",
     storesDir = "stores",
     apiDir = "api",
-    extraFiles = {},
     templates: optedTemplates = {},
   } = opts
+
+  const rootPath = (...path: string[]) => resolve(String(process.env.PWD), join(...path))
+
+  const sourceFolder = basename(rootPath())
 
   const viewsFile = join(viewsDir, "_views.yml")
 
   async function generateFiles(
-    { root, base }: ResolvedConfig,
+    { base }: ResolvedConfig,
   ) {
-
-    const rootPath = (...path: string[]) => resolve(root, join(...path))
-
-    const sourceFolder = basename(root)
 
     // re-reading files every time
 
@@ -124,10 +116,6 @@ export function vitePluginApprilViews(
     const viewEntries: [ string, ViewDefinition][] = Object.entries(viewDefinitions).map(([p,d]) => [ p, d || {} ])
 
     const views: ExportedView[] = []
-
-    const typeImports: Record<string, TypeImport> = {}
-
-    const envRoutes: Record<string, {}> = {}
 
     for (const [ viewPath, viewDefinition ] of viewEntries) {
 
@@ -143,30 +131,22 @@ export function vitePluginApprilViews(
 
       let envApi: string | undefined
 
-      if (env) {
-        envApi = env.api || join(viewPath, "env")
-        envRoutes[envApi] = {}
+      if (typeof env === "string") {
+        envApi = env
       }
-
-      let envType = "Record<string, any>"
-
-      if (typeof env?.type === "string") {
-        envType = env.type
-      }
-      else if (env?.type?.import) {
-        envType = env.type.import
-        typeImports[env.type.import] = env.type
+      else if (env === true) {
+        envApi = join(viewPath, "env")
       }
 
       const view: View = {
         name: importPath,
+        importName: importPath.replace(/\W/g, "_"),
         path,
         params: String(viewDefinition.params || ""),
         meta: JSON.stringify("meta" in viewDefinition ? viewDefinition.meta : {}),
         options: JSON.stringify("options" in viewDefinition ? viewDefinition.options : {}),
         importPath: importPath + suffix,
         file: importPath + suffix,
-        envType,
         envApi,
       }
 
@@ -183,63 +163,6 @@ export function vitePluginApprilViews(
       })
 
       views.push({ ...view, serialized })
-
-    }
-
-    const perViewExtraFiles: ExtraFileEntry[] = []
-    const globalExtraFiles: ExtraFileEntry[] = []
-
-    for (const [ outfile, setup ] of Object.entries(extraFiles)) {
-
-      const { template: tplfile, overwrite } = typeof setup === "string"
-        ? { template: setup, overwrite: true }
-        : setup
-
-      const template = await readFile(rootPath(tplfile), "utf8")
-
-      if (/\{\{.+\}\}/.test(outfile)) {
-        perViewExtraFiles.push({ outfile, template, overwrite })
-      }
-      else {
-        globalExtraFiles.push({ outfile, template, overwrite })
-      }
-
-    }
-
-    for (const { outfile, template, overwrite } of perViewExtraFiles) {
-
-      for (const view of views) {
-
-        const file = rootPath(render(outfile, view))
-
-        if (await fsx.pathExists(file) && !overwrite) {
-          continue
-        }
-
-        const content = render(template, {
-          sourceFolder,
-          view,
-          views,
-        })
-
-        await fsx.outputFile(file, content, "utf8")
-
-      }
-
-    }
-
-    for (const { outfile, template, overwrite } of globalExtraFiles) {
-
-      if (await fsx.pathExists(outfile) && !overwrite) {
-        continue
-      }
-
-      const content = render(template, {
-        sourceFolder,
-        views,
-      })
-
-      await fsx.outputFile(outfile, content, "utf8")
 
     }
 
@@ -270,9 +193,9 @@ export function vitePluginApprilViews(
 
       const content = render(templates.envStore, {
         BANNER,
-        views,
-        typeImports: Object.values(typeImports),
-        importFetch: views.some((e) => e.envApi),
+        sourceFolder,
+        apiDir,
+        viewsWithEnvApi: views.filter((e) => e.envApi),
       })
 
       await fsx.outputFile(
@@ -285,9 +208,16 @@ export function vitePluginApprilViews(
 
     {
 
+      const reducer = (map: Record<string, {}>, { envApi }: View) => ({
+        ...map,
+        ...envApi
+          ? { [envApi]: {} }
+          : {}
+      })
+
       const content = [
         BANNER.trim().replace(/^/gm, "#"),
-        stringify(envRoutes),
+        stringify(views.reduce(reducer, {})),
       ].join("\n")
 
       await fsx.outputFile(
@@ -308,11 +238,10 @@ export function vitePluginApprilViews(
 
     configureServer(server) {
 
-      // adding optedTemplates and extraFiles templates to watchlist
+      // adding optedTemplates to watchlist
 
       const watchedFiles = [
         ...Object.values(optedTemplates),
-        ...Object.values(extraFiles).map((e) => typeof e === "string" ? e : e.template),
       ]
 
       if (watchedFiles.length) {

@@ -1,42 +1,66 @@
 
-import { basename, resolve, join } from "path";
-import { readFile } from "fs/promises";
+import { dirname, basename, resolve, join } from "path";
 
-import { glob } from "glob";
-import type { Plugin, ResolvedConfig } from "vite";
+import type { Plugin } from "vite";
 import fsx from "fs-extra";
+import { glob } from "glob";
 import { parse } from "yaml";
+import { transform } from "esbuild";
 
 import { BANNER, render } from "../render";
 import { sanitizePath } from "../base";
+import { extractTypedEndpoints } from "./ast";
 
 import routeTpl from "./templates/route.tpl";
 import routesTpl from "./templates/routes.tpl";
-import fetchTpl from "./templates/fetch.tpl";
 import urlmapTpl from "./templates/urlmap.tpl";
 
-import type { ExtraFileSetup, ExtraFileEntry } from "../@types";
+import fetchMdlTpl from "./templates/fetch/module.tpl";
+import fetchDtsTpl from "./templates/fetch/module.d.tpl";
+import fetchIdxTpl from "./templates/fetch/index.tpl";
+import fetchHmrTpl from "./templates/fetch/hmr.tpl";
 
 const defaultTemplates = {
   route: routeTpl,
   routes: routesTpl,
-  fetch: fetchTpl,
   urlmap: urlmapTpl,
 }
 
-type TemplateName = keyof typeof defaultTemplates
-type TemplateMap = Record<TemplateName | string, string>
+type Templates = Record<keyof typeof defaultTemplates, string>
 
 type Options = {
-  apiDir: string,
+  apiDir: string;
+  fetchFilter: (r: Pick<Route, "name" | "path" | "file">) => boolean,
+  fetchModulePrefix: string;
   sourceFiles: string | string[];
-  extraFiles: Record<string, ExtraFileSetup>,
-  templates: Partial<TemplateMap>,
+  templates: Partial<Templates>;
+}
+
+type Route = {
+  name: string;
+  importName: string;
+  path: string;
+  importPath: string;
+  file: string;
+  meta: string;
+  serialized: string;
+  fetchModuleId?: string;
 }
 
 type RouteSetup = {
-  meta?: Record<string, any>;
+  name?: string;
+  file?: string;
   template?: string;
+  meta?: Record<string, any>;
+}
+
+type FetchModule = {
+  id: string;
+  name: string;
+  importName: string;
+  watchFiles: string[];
+  code: string,
+  hmrUpdate?: string;
 }
 
 /** {apiDir}/_routes.yml schema:
@@ -69,58 +93,122 @@ some-route:
  * Generates various files based on {apiDir}/_routes.yml
  *
  * Generated files:
- *    - {apiDir}/_routes.ts - importing route files and exporting mapped routes
  *    - {apiDir}/{route}.ts (or {apiDir}/{route}/index.ts if path ends in a slash)
- *    - extraFiles, if opted
+ *    - {apiDir}/_routes.ts - importing route files and exporting mapped routes
+ *    - {apiDir}/_fetch.d.ts
+ *    - {apiDir}/_fetch.ts
+ *    - {apiDir}/_urlmap.ts
  *
  * @param {object} [opts={}] - options
  * @param {string} [opts.apiDir="api"] - path to api folder.
  *    where to place generated files
  * @param {string} [opts.sourceFiles="**\/*_routes.yml"] - yaml files glob pattern
  *    files containing route definitions, resolved relative to apiDir
- * @param {object} [opts.extraFiles={}] - an optional map of extra files to be generated.
- *    where key is the file to be generated and value is the template to be used.
  * @param {object} [opts.templates={}] - custom templates
  */
-export function vitePluginApprilApi(
+export async function vitePluginApprilApi(
   opts: Partial<Options> = {},
-): Plugin {
+): Promise<Plugin> {
 
   const {
     apiDir = "api",
+    fetchFilter = (_r) => true,
     sourceFiles = "**/*_routes.yml",
-    extraFiles = {},
   } = opts
 
-    // adding custom templates and extraFiles templates to watchlist
-  const watchedFiles = [
-    ...Object.values({ ...opts.templates }),
-    ...Object.values(extraFiles).map((e) => typeof e === "string" ? e : e.template),
-  ] as string[]
+  const rootPath = (...path: string[]) => resolve(String(process.env.PWD), join(...path))
 
-  async function generateFiles({ root }: ResolvedConfig) {
+  const sourceFolder = basename(rootPath())
 
-    const rootPath = (...path: string[]) => resolve(root, join(...path))
+  const fetchModulePrefix = `${ opts.fetchModulePrefix?.trim() || "fetch" }:`
 
-    const sourceFolder = basename(root)
+  // ambient modules file.
+  // do not use global import/export in module.d.tpl template!
+  const fetchDtsFile = rootPath(apiDir, "_fetch.d.ts")
 
-    // re-reading files every time
+  // regular index file with global export
+  const fetchIdxFile = rootPath(apiDir, "_fetch.ts")
 
-    const customTemplates: Record<string, string> = {}
+  const virtualModules: {
+    fetch: Record<string, FetchModule>;
+  } = {
+    fetch: {},
+  }
 
-    const readTemplate = async (tpl: string) => {
-      return tpl in customTemplates
-        ? customTemplates[tpl]
-        : customTemplates[tpl] = await readFile(/^\//.test(tpl) ? tpl : rootPath(tpl), "utf8")
+  const watchMap: {
+    srcFiles: Record<string, Function>;
+    tplFiles: Record<string, Function>;
+    apiFiles: Record<string, Function>;
+  } = {
+    srcFiles: {},
+    tplFiles: {},
+    apiFiles: {},
+  }
+
+  const readTemplate = (file: string) => fsx.readFile(
+    /^\//.test(file)
+      ? file
+      : rootPath(file),
+    "utf8"
+  )
+
+  const templates = { ...defaultTemplates }
+
+  const routeMap: Record<string, Route> = {}
+
+  for (
+    const [
+      name,
+      file,
+    ] of Object.entries({ ...opts.templates }) as [
+      name: keyof Templates,
+      file: string
+    ][]
+  ) {
+    // watching custom templates for updates
+    watchMap.tplFiles[rootPath(file)] = async () => {
+      templates[name] = await readTemplate(file)
+    }
+  }
+
+  const fetchModuleFactory = async (
+    route: Omit<Route, "fetchModuleId"> & { fetchModuleId: string },
+  ): Promise<FetchModule> => {
+
+    const { file, name, fetchModuleId } = route
+
+    const {
+      typeDeclarations: fetchTypes,
+      endpoints: fetchEndpoints,
+    } = extractTypedEndpoints(
+      await fsx.readFile(file, "utf8"),
+      { root: sourceFolder, base: dirname(file.replace(rootPath(), "")) }
+    )
+
+    return {
+      id: fetchModuleId,
+      name,
+      importName: fetchModuleId.replace(/\W/g, "_"),
+      watchFiles: [ file ],
+      code: render(fetchMdlTpl, {
+        apiDir,
+        sourceFolder,
+        fetchTypes,
+        fetchEndpoints,
+        ...route
+      }),
+      hmrUpdate: `
+        (updated) => {
+          name = updated.name
+          path = updated.path
+          apiFactory = updated.apiFactory
+        }
+      `.trim(),
     }
 
-    const templates: TemplateMap = { ...defaultTemplates }
+  }
 
-    for (const [ name, file ] of Object.entries({ ...opts.templates })) {
-      templates[name as TemplateName] = await readTemplate(file as string)
-    }
-
-    const routeEntries: [ name: string, setup: RouteSetup ][] = []
+  async function configResolved() {
 
     for (
       const pattern of Array.isArray(sourceFiles)
@@ -131,138 +219,171 @@ export function vitePluginApprilApi(
       for (const file of await glob(pattern, { cwd: rootPath(apiDir) })) {
 
         const filePath = rootPath(apiDir, file)
-        const fileContent = await readFile(filePath, "utf8")
-        const routeDefinitions = parse(fileContent)
 
-        for (const [ path, setup ] of Object.entries(routeDefinitions)) {
-          routeEntries.push([ path, setup || {} ])
+        watchMap.srcFiles[filePath] = async () => {
+
+          const fileContent = await fsx.readFile(filePath, "utf8")
+          const routeDefinitions = parse(fileContent)
+
+          for (
+            const [
+              routePath,
+              routeSetup
+            ] of Object.entries(routeDefinitions) as [
+              path: string,
+              setup: RouteSetup | undefined
+            ][]
+          ) {
+
+            const name = sanitizePath(routeSetup?.name || routePath).replace(/\/+$/, "")
+
+            const importPath = routeSetup?.file
+              ? sanitizePath(routeSetup.file.replace(/\.[^.]+$/, ""))
+              : join(apiDir, name)
+
+            const importName = importPath.replace(/\W/g, "_")
+
+            // path should start with a slash
+            const path = join("/", name)
+
+            const suffix = routeSetup?.file
+              ? routeSetup.file.replace(/.+(\.[^.]+)$/, "$1")
+              : /\/$/.test(routePath)
+                  ? "/index.ts"
+                  : ".ts"
+
+            const file = rootPath(importPath + suffix)
+
+            const meta = JSON.stringify(routeSetup?.meta || {})
+
+            const serialized = JSON.stringify({
+              name,
+              path,
+            })
+
+            const fetchModuleId = fetchFilter({ name, path, file })
+              ? fetchModulePrefix + name
+              : undefined
+
+            routeMap[path] = {
+              name,
+              importName,
+              path,
+              importPath,
+              file,
+              meta,
+              serialized,
+              fetchModuleId,
+            }
+
+            if (!await fsx.pathExists(file)) {
+
+              const template = routeSetup?.template
+                ? await readTemplate(routeSetup?.template)
+                : templates.route
+
+              const content = render(template, {
+                ...routeSetup,
+                ...routeMap[path],
+              })
+
+              await fsx.outputFile(file, content, "utf8")
+
+            }
+
+            if (fetchModuleId) {
+
+              watchMap.apiFiles[file] = async () => {
+
+                virtualModules.fetch[fetchModuleId] = await fetchModuleFactory({
+                  ...routeMap[path],
+                  fetchModuleId,
+                })
+
+                const modules = Object.values(virtualModules.fetch).filter((e) => e.id !== fetchModulePrefix)
+
+                virtualModules.fetch[fetchModulePrefix] = {
+                  id: fetchModulePrefix,
+                  name: "Not supposed to be imported!",
+                  importName: "Not supposed to be imported!",
+                  watchFiles: [ fetchDtsFile ],
+                  code: render(fetchIdxTpl, {
+                    apiDir,
+                    sourceFolder,
+                    modules,
+                  }),
+                }
+
+                // (re)generating fetch files when some api file updated
+
+                // generating file contaning ambient fetch modules
+                await fsx.outputFile(
+                  fetchDtsFile,
+                  render(fetchDtsTpl, {
+                    BANNER,
+                    apiDir,
+                    sourceFolder,
+                    modules,
+                    defaultModuleId: fetchModulePrefix,
+                  }),
+                  "utf8"
+                )
+
+                // generating {apiDir}/_fetch.ts for access from outside sourceFolder,
+                // eg. when need access to @admin fetch modules from inside @front sourceFolder
+                await fsx.outputFile(
+                  fetchIdxFile,
+                  render(fetchIdxTpl, {
+                    BANNER,
+                    apiDir,
+                    sourceFolder,
+                    modules,
+                  }),
+                  "utf8"
+                )
+
+              }
+
+            }
+
+          }
+
+          // (re)generating base files when some source file updated
+
+          const routes = Object.values(routeMap)
+
+          for (const [ outFile, template ] of [
+            [ "_routes.ts", templates.routes ],
+            [ "_urlmap.ts", templates.urlmap ],
+          ]) {
+
+            const content = render(template, {
+              BANNER,
+              apiDir,
+              sourceFolder,
+              routes,
+            })
+
+            await fsx.outputFile(rootPath(apiDir, outFile), content, "utf8")
+
+          }
+
         }
 
-        if (!watchedFiles.includes(filePath)) {
-          watchedFiles.push(filePath)
-        }
-
       }
 
     }
 
-    const routes = []
-
-    for (const [ routePath, routeSetup ] of routeEntries) {
-
-      const importPath = sanitizePath(routePath).replace(/\/+$/, "")
-
-      const suffix = /\/$/.test(routePath)
-        ? "/index.ts"
-        : ".ts"
-
-      // path should start with a slash
-      const path = join("/", importPath.replace(/^index$/, ""))
-
-      const route = {
-        name: importPath,
-        path,
-        meta: JSON.stringify("meta" in routeSetup ? routeSetup.meta : {}),
-        importName: importPath.replace(/\W/g, "_"),
-        importPath,
-        file: importPath + suffix,
+    for (
+      const handlerMap of [ // 000 keep the order!
+        watchMap.tplFiles,  // 001
+        watchMap.srcFiles,  // 002
+        watchMap.apiFiles,  // 003
+      ]
+    ) {
+      for (const handler of Object.values(handlerMap)) {
+        await handler()
       }
-
-      const serialized = JSON.stringify({
-        name: route.name,
-        path: route.path,
-      })
-
-      routes.push({ ...route, serialized })
-
-      const routeFile = rootPath(apiDir, route.file)
-
-      if (!await fsx.pathExists(routeFile)) {
-
-        const template = routeSetup.template
-          ? await readTemplate(routeSetup.template)
-          : templates.route
-
-        const content = render(template, { ...routeSetup, ...route })
-
-        await fsx.outputFile(routeFile, content, "utf8")
-
-      }
-
-    }
-
-    const perRouteExtraFiles: ExtraFileEntry[] = []
-    const globalExtraFiles: ExtraFileEntry[] = []
-
-    for (const [ outfile, setup ] of Object.entries(extraFiles)) {
-
-      const { template: tplfile, overwrite } = typeof setup === "string"
-        ? { template: setup, overwrite: true }
-        : setup
-
-      const template = await readFile(rootPath(tplfile), "utf8")
-
-      if (/\{\{.+\}\}/.test(outfile)) {
-        perRouteExtraFiles.push({ outfile, template, overwrite })
-      }
-      else {
-        globalExtraFiles.push({ outfile, template, overwrite })
-      }
-
-    }
-
-    for (const { outfile, template, overwrite } of perRouteExtraFiles) {
-
-      for (const route of routes) {
-
-        const file = rootPath(render(outfile, route))
-
-        if (await fsx.pathExists(file) && !overwrite) {
-          continue
-        }
-
-        const content = render(template, {
-          sourceFolder,
-          route,
-          routes,
-        })
-
-        await fsx.outputFile(file, content, "utf8")
-
-      }
-
-    }
-
-    for (const { outfile, template, overwrite } of globalExtraFiles) {
-
-      if (await fsx.pathExists(outfile) && !overwrite) {
-        continue
-      }
-
-      const content = render(template, {
-        sourceFolder,
-        routes,
-      })
-
-      await fsx.outputFile(outfile, content, "utf8")
-
-    }
-
-    for (const [ outfile, template ] of [
-      [ rootPath(apiDir, "_routes.ts"), templates.routes ],
-      [ rootPath(apiDir, "_urlmap.ts"), templates.urlmap ],
-      [ rootPath("fetch.ts"), templates.fetch ],
-    ]) {
-
-      const content = render(template, {
-        BANNER,
-        apiDir,
-        sourceFolder,
-        routes,
-      })
-
-      await fsx.outputFile(outfile, content, "utf8")
-
     }
 
   }
@@ -271,21 +392,94 @@ export function vitePluginApprilApi(
 
     name: "vite-plugin-appril-api",
 
-    configResolved: generateFiles,
+    resolveId(id) {
+      if (virtualModules.fetch[id]) {
+        return id
+      }
+    },
+
+    load(id) {
+      if (virtualModules.fetch[id]) {
+        return {
+          code: virtualModules.fetch[id].code,
+          map: null,
+        }
+      }
+    },
+
+    transform(src, id) {
+
+      if (id === fetchIdxFile) {
+        return {
+          code: src + render(fetchHmrTpl, {}),
+        }
+      }
+
+      if (virtualModules.fetch[id]) {
+        const hmrHandler = render(fetchHmrTpl, virtualModules.fetch[id])
+        return transform(src + hmrHandler, {
+          loader: "ts",
+        })
+      }
+
+    },
+
+    async handleHotUpdate({ server, file }) {
+
+      for (const id of Object.keys(virtualModules.fetch)) {
+
+        if (!virtualModules.fetch[id].watchFiles.includes(file)) {
+          continue
+        }
+
+        const virtualModule = server.moduleGraph.getModuleById(id)
+
+        if (!virtualModule) {
+          continue
+        }
+
+        return [ virtualModule ]
+
+      }
+
+    },
+
+    configResolved,
 
     configureServer(server) {
 
-      if (watchedFiles.length) {
-
-        server.watcher.add(watchedFiles)
-
-        server.watcher.on("change", function(file) {
-          if (watchedFiles.some((path) => file.includes(path))) {
-            return generateFiles(server.config)
-          }
-        })
-
+      for (const map of Object.values(watchMap)) {
+        server.watcher.add(Object.keys(map))
       }
+
+      server.watcher.on("change", async (file) => {
+
+        if (watchMap.tplFiles[file]) {
+          await watchMap.tplFiles[file]()
+          // regenerating everything when some template updated
+          for (
+            const handler of [
+              ...Object.values(watchMap.srcFiles),
+              ...Object.values(watchMap.apiFiles),
+            ]
+          ) {
+            await handler()
+          }
+        }
+        else {
+
+          for (const map of [
+            watchMap.srcFiles,
+            watchMap.apiFiles,
+          ]) {
+            if (map[file]) {
+              await map[file]()
+            }
+          }
+
+        }
+
+      })
 
     },
 

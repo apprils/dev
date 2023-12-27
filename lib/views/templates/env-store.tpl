@@ -2,28 +2,20 @@
 
 import { defineStore } from "pinia";
 
-{{#importFetch}}
-import fetch from "@/fetch";{{/importFetch}}
-
-{{#typeImports}}
-import type { {{import}} } from "{{from}}";
-{{/typeImports}}
+{{#viewsWithEnvApi.length}}
+import fetch from "{{sourceFolder}}/api/_fetch";
+{{/viewsWithEnvApi.length}}
 
 export type State = {
-{{#views}}
-  "{{name}}": {{envType}} | null;
-{{/views}}
+{{#viewsWithEnvApi}}
+  "{{name}}": Awaited<ReturnType<typeof fetch["{{name}}"]["get"]>> | undefined;
+{{/viewsWithEnvApi}}
 }
 
 const fetchMap = {
-{{#views}}
-  {{#envApi}}
-    "{{name}}": () => fetch("{{envApi}}").get<{{envType}}>(),
-  {{/envApi}}
-  {{^envApi}}
-    "{{name}}": () => Promise.resolve(null),
-  {{/envApi}}
-{{/views}}
+{{#viewsWithEnvApi}}
+  "{{name}}": fetch["{{envApi}}"].get,
+{{/viewsWithEnvApi}}
 }
 
 export default defineStore({
@@ -32,15 +24,17 @@ export default defineStore({
 
   state(): State {
     return {
-    {{#views}}
-      "{{name}}": null,
-    {{/views}}
+    {{#viewsWithEnvApi}}
+      "{{name}}": undefined,
+    {{/viewsWithEnvApi}}
     }
   },
 
   actions: {
     async $fetch(key: keyof State) {
-      this[key] = await fetchMap[key]()
+      if (key in fetchMap) {
+        this[key] = await fetchMap[key]()
+      }
     },
   },
 

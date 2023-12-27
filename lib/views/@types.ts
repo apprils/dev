@@ -1,6 +1,7 @@
 
 export type View = {
   name: string;
+  importName: string;
   path: string;
   params: string;
   file: string;
@@ -8,7 +9,6 @@ export type View = {
   options: string;
   importPath: string;
   envApi?: string;
-  envType: string;
 }
 
 export type ExportedView = View & {

@@ -11,7 +11,7 @@ export default {
     params: "{{params}}",
     meta: {{meta}} as Meta,
     options: {{options}} as Options,
-    component: () => import("@/{{viewsDir}}/{{importPath}}"),
+    component: () => import("{{sourceFolder}}/{{viewsDir}}/{{importPath}}"),
   },
 {{/views}}
 }
