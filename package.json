@@ -39,11 +39,13 @@
     "// ✨ build": "",
     "prebuild": "mkdir -p pkg; find pkg -type f -exec rm -fv {} \\;",
     "build": "esbundler lib/index.ts --sourcemap=inline --outdir=pkg",
-    "postbuild": "tsc -p lib/tsconfig.json",
-    "// ✨ publish": "",
-    "prepub": "npm run build",
-    "pub": "npm pub",
-    "postpub": "mkdir -p var/pub; npm pack --pack-destination var/pub"
+    "postbuild": "tsc -p lib/tsconfig.json"
+  },
+  "release-it": {
+    "hooks": {
+      "before:init": [ "npm run build" ],
+      "after:release": [ "mkdir -p var/pub", "npm pack --pack-destination var/pub" ]
+    }
   },
   "dependencies": {
     "@phenomnomnominal/tsquery": "^6.1.3",
