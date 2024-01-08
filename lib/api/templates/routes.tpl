@@ -13,7 +13,7 @@ export default {
     path: "{{path}}",
     file: "{{file}}",
     meta: {{meta}} as Meta,
-    spec: {{importName}},
+    spec: {{importName}} as [],
   },
 {{/routes}}
 }
