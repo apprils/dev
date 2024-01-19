@@ -132,7 +132,7 @@ export async function vitePluginApprilApi(
 
   let esbuilder: ReturnType<typeof esbuilderFactory>
 
-  const fetchModulePrefix = `${ opts.fetchModulePrefix?.trim() || "fetch" }:`
+  const fetchModulePrefix = `${ opts.fetchModulePrefix?.trim() || "@fetch" }`
 
   // ambient modules file.
   // do not use global import/export in module.d.tpl template!
@@ -274,7 +274,7 @@ export async function vitePluginApprilApi(
             })
 
             const fetchModuleId = fetchFilter({ name, path, file })
-              ? fetchModulePrefix + name
+              ? [ fetchModulePrefix, name ].join(":")
               : undefined
 
             routeMap[path] = {
