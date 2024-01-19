@@ -9,8 +9,7 @@
     "npm": "10.2"
   },
   "files": [
-    "pkg/*",
-    "tsconfig.*.json"
+    "pkg/*"
   ],
   "directories": {
     "bin": "pkg/bin"
@@ -21,24 +20,13 @@
     ".": {
       "default": "./pkg/index.js",
       "types": "./pkg/index.d.ts"
-    },
-    "./tsconfig.app.json": {
-      "default": "./tsconfig.app.json"
-    },
-    "./tsconfig.base.json": {
-      "default": "./tsconfig.base.json"
-    },
-    "./tsconfig.lib.json": {
-      "default": "./tsconfig.lib.json"
-    },
-    "./tsconfig.src.json": {
-      "default": "./tsconfig.src.json"
     }
   },
   "scripts": {
     "// ✨ build": "",
+    "esbundler": "func() { e=$1; shift; esbuild $e --bundle --platform=node --target=node20 --packages=external --loader:.tpl=text $*; }; func",
     "prebuild": "mkdir -p pkg; find pkg -type f -exec rm -fv {} \\;",
-    "build": "esbundler lib/index.ts --sourcemap=inline --outdir=pkg",
+    "build": "npm run esbundler -- lib/index.ts --sourcemap=inline --outdir=pkg",
     "postbuild": "tsc -p lib/tsconfig.json"
   },
   "release-it": {
@@ -60,21 +48,18 @@
     "glob": "^10.3.10",
     "kleur": "^4.1.5",
     "mustache": "^4.2.0",
+    "path-scurry": "^1.10.1",
+    "typescript": "^5.3.3",
     "unplugin-vue-router": "^0.7.0",
+    "vite": "^5.0.12",
     "yaml": "^2.3.4"
   },
   "devDependencies": {
-    "@appril/pgts": "^0.2.5",
-    "@appril/scripts": "^0.2.4",
+    "@appril/tsconfig": "^0.2.2",
     "@types/fs-extra": "^11.0.4",
+    "@types/koa": "^2.14.0",
     "@types/mustache": "^4.2.5",
-    "@types/node": "^20.10.7",
-    "path-scurry": "^1.10.1",
-    "release-it": "^17.0.1",
-    "typescript": "^5.3.3",
-    "vite": "^5.0.11"
-  },
-  "peerDependencies": {
-    "typescript": "^5.3.3"
+    "@types/node": "^20.11.5",
+    "release-it": "^17.0.1"
   }
 }
