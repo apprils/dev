@@ -1,15 +1,20 @@
 
 import { dirname, basename, resolve, join } from "path";
 
-import type { Plugin } from "vite";
+import type { Plugin, ResolvedConfig } from "vite";
 import fsx from "fs-extra";
 import { glob } from "glob";
 import { parse } from "yaml";
-import { transform } from "esbuild";
+
+import {
+  type BuildOptions,
+  transform,
+} from "esbuild";
 
 import { BANNER, render } from "../render";
 import { sanitizePath } from "../base";
 import { extractTypedEndpoints } from "./ast";
+import { esbuilderFactory } from "./esbuilder";
 
 import routeTpl from "./templates/route.tpl";
 import routesTpl from "./templates/routes.tpl";
@@ -29,11 +34,12 @@ const defaultTemplates = {
 type Templates = Record<keyof typeof defaultTemplates, string>
 
 type Options = {
-  apiDir: string;
-  fetchFilter: (r: Pick<Route, "name" | "path" | "file">) => boolean,
-  fetchModulePrefix: string;
-  sourceFiles: string | string[];
-  templates: Partial<Templates>;
+  esbuildConfig: BuildOptions;
+  apiDir?: string;
+  fetchFilter?: (r: Pick<Route, "name" | "path" | "file">) => boolean,
+  fetchModulePrefix?: string;
+  sourceFiles?: string | string[];
+  templates?: Partial<Templates>;
 }
 
 type Route = {
@@ -100,6 +106,7 @@ some-route:
  *    - {apiDir}/_urlmap.ts
  *
  * @param {object} [opts={}] - options
+ * @param {string} [opts.esbuildConfig]
  * @param {string} [opts.apiDir="api"] - path to api folder.
  *    where to place generated files
  * @param {string} [opts.sourceFiles="**\/*_routes.yml"] - yaml files glob pattern
@@ -107,10 +114,11 @@ some-route:
  * @param {object} [opts.templates={}] - custom templates
  */
 export async function vitePluginApprilApi(
-  opts: Partial<Options> = {},
+  opts: Options,
 ): Promise<Plugin> {
 
   const {
+    esbuildConfig,
     apiDir = "api",
     fetchFilter = (_r) => true,
     sourceFiles = "**/*_routes.yml",
@@ -119,6 +127,10 @@ export async function vitePluginApprilApi(
   const rootPath = (...path: string[]) => resolve(String(process.env.PWD), join(...path))
 
   const sourceFolder = basename(rootPath())
+
+  const outDirSuffix = "client"
+
+  let esbuilder: ReturnType<typeof esbuilderFactory>
 
   const fetchModulePrefix = `${ opts.fetchModulePrefix?.trim() || "fetch" }:`
 
@@ -300,7 +312,9 @@ export async function vitePluginApprilApi(
                   fetchModuleId,
                 })
 
-                const modules = Object.values(virtualModules.fetch).filter((e) => e.id !== fetchModulePrefix)
+                const modules = Object.values(virtualModules.fetch).filter(
+                  (e) => e.id !== fetchModulePrefix
+                )
 
                 virtualModules.fetch[fetchModulePrefix] = {
                   id: fetchModulePrefix,
@@ -392,6 +406,10 @@ export async function vitePluginApprilApi(
 
     name: "vite-plugin-appril-api",
 
+    async buildStart(){
+      await esbuilder?.build()
+    },
+
     resolveId(id) {
       if (virtualModules.fetch[id]) {
         return id
@@ -407,7 +425,7 @@ export async function vitePluginApprilApi(
       }
     },
 
-    transform(src, id) {
+    async transform(src, id) {
 
       if (id === fetchIdxFile) {
         return {
@@ -417,9 +435,12 @@ export async function vitePluginApprilApi(
 
       if (virtualModules.fetch[id]) {
         const hmrHandler = render(fetchHmrTpl, virtualModules.fetch[id])
-        return transform(src + hmrHandler, {
+        const { code } = await transform(src + hmrHandler, {
           loader: "ts",
         })
+        return {
+          code,
+        }
       }
 
     },
@@ -444,9 +465,34 @@ export async function vitePluginApprilApi(
 
     },
 
+    config(config) {
+
+      if (!config.build?.outDir) {
+        throw new Error("Config is missing build.outDir")
+      }
+
+      esbuilder = esbuilderFactory(
+        esbuildConfig,
+        {
+          apiDir: join(sourceFolder, apiDir),
+          outDir: join(config.build.outDir, basename(apiDir))
+        }
+      )
+
+      return {
+        build: {
+          outDir: join(config.build.outDir, outDirSuffix),
+        },
+      }
+
+    },
+
     configResolved,
 
-    configureServer(server) {
+    async configureServer(server) {
+
+      // using separate watcher cause api depends on a wider set of files
+      await esbuilder?.watch()
 
       for (const map of Object.values(watchMap)) {
         server.watcher.add(Object.keys(map))
