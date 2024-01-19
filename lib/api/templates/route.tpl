@@ -1,5 +1,5 @@
 
-import { get } from "{{sourceFolder}}/api";
+import { get } from "@/api";
 
 export default [
 
