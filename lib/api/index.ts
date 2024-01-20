@@ -36,6 +36,7 @@ type Templates = Record<keyof typeof defaultTemplates, string>
 type Options = {
   esbuildConfig: BuildOptions;
   apiDir?: string;
+  apiHmrFlushPatterns?: RegExp[];
   fetchFilter?: (r: Pick<Route, "name" | "path" | "file">) => boolean,
   fetchModulePrefix?: string;
   sourceFiles?: string | string[];
@@ -122,6 +123,7 @@ export async function vitePluginApprilApi(
     apiDir = "api",
     fetchFilter = (_r) => true,
     sourceFiles = "**/*_routes.yml",
+    apiHmrFlushPatterns,
   } = opts
 
   const rootPath = (...path: string[]) => resolve(String(process.env.PWD), join(...path))
@@ -475,7 +477,8 @@ export async function vitePluginApprilApi(
         esbuildConfig,
         {
           apiDir: join(sourceFolder, apiDir),
-          outDir: join(config.build.outDir, basename(apiDir))
+          outDir: join(config.build.outDir, basename(apiDir)),
+          flushPatterns: apiHmrFlushPatterns,
         }
       )
 

@@ -10,6 +10,7 @@ export function esbuilderFactory(
   opt: {
     apiDir: string;
     outDir: string;
+    flushPatterns?: RegExp[];
   },
 ) {
 
@@ -26,10 +27,22 @@ export function esbuilderFactory(
     const hmrHandler: Plugin = {
       name: "hmr-handler",
       setup(build) {
+
+        const flushPatterns = [
+          /@appril\/core/,
+          ...opt.flushPatterns || [],
+        ]
+
+        const flushFilter = (id: string) => {
+          return id === outfile || flushPatterns.some((e) => e.test(id))
+        }
+
         build.onEnd(
           async () => {
 
-            delete require.cache[outfile]
+            for (const id of Object.keys(require.cache).filter(flushFilter)) {
+              delete require.cache[id]
+            }
 
             const { app, listen } = require(outfile)
 
