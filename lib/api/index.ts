@@ -54,8 +54,12 @@ type Route = {
   fetchModuleId?: string;
 }
 
+// aliases not reflected in fetch modules nor in urlmap
+type RouteAlias = Omit<Route, "serialized" | "fetchModuleId">
+
 type RouteSetup = {
   name?: string;
+  alias?: string | string[];
   file?: string;
   template?: string;
   meta?: Record<string, any>;
@@ -86,6 +90,16 @@ some-page.html:
 
 # will generate {apiDir}/another-page.html/index.ts
 another-page.html/:
+
+# aliases
+users/login:
+  alias: users/authorize
+
+# or
+users/login:
+  alias:
+    - users/authorize
+    - login
 
 # provide meta object
 some-route:
@@ -169,6 +183,7 @@ export async function vitePluginApprilApi(
   const templates = { ...defaultTemplates }
 
   const routeMap: Record<string, Route> = {}
+  const aliasMap: Record<string, RouteAlias> = {}
 
   for (
     const [
@@ -290,6 +305,20 @@ export async function vitePluginApprilApi(
               fetchModuleId,
             }
 
+            for (
+              const alias of typeof routeSetup?.alias === "string"
+                ? [ routeSetup.alias ]
+                : [ ...routeSetup?.alias || [] ]
+            ) {
+              const { importName, serialized, fetchModuleId, ...route } = routeMap[path]
+              aliasMap[alias] = {
+                ...route,
+                name: alias,
+                importName: [ importName, alias.replace(/\W/g, "_") ].join("$"),
+                path: join("/", alias),
+              }
+            }
+
             if (!await fsx.pathExists(file)) {
 
               const template = routeSetup?.template
@@ -366,12 +395,17 @@ export async function vitePluginApprilApi(
 
           // (re)generating base files when some source file updated
 
-          const routes = Object.values(routeMap)
+          const routesWithAlias = Object.values({
+            ...aliasMap,
+            ...routeMap, // routeMap can/should override aliasMap entries
+          })
 
-          for (const [ outFile, template ] of [
-            [ "_routes.ts", templates.routes ],
-            [ "_urlmap.ts", templates.urlmap ],
-          ]) {
+          const routesNoAlias = Object.values(routeMap)
+
+          for (const [ outFile, template, routes ] of [
+            [ "_routes.ts", templates.routes, routesWithAlias ],
+            [ "_urlmap.ts", templates.urlmap, routesNoAlias ],
+          ] as const) {
 
             const content = render(template, {
               BANNER,
