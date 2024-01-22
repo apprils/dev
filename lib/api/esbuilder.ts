@@ -60,6 +60,7 @@ export function esbuilderFactory(
     const ctx = await context({
       logLevel: "info",
       ...config,
+      bundle: true,
       entryPoints: [
         join(apiDir, "_server_watch.ts"),
       ],
@@ -78,6 +79,7 @@ export function esbuilderFactory(
 
     build: () => build({
       ...config,
+      bundle: true,
       entryPoints: [
         join(apiDir, "_server.ts"),
       ],
