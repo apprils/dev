@@ -1,7 +1,7 @@
 
 import { dirname, basename, resolve, join } from "path";
 
-import type { Plugin, ResolvedConfig } from "vite";
+import type { Plugin } from "vite";
 import fsx from "fs-extra";
 import { glob } from "glob";
 import { parse } from "yaml";
