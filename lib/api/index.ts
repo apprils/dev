@@ -7,7 +7,9 @@ import { parse } from "yaml";
 
 import { type BuildOptions, transform } from "esbuild";
 
-import { BANNER, render } from "../render";
+import type { CodeFormatter } from "../@types";
+
+import { BANNER, render, renderToFile } from "../render";
 import { resolvePath, sanitizePath } from "../base";
 import { extractTypedEndpoints } from "./ast";
 import { esbuilderFactory } from "./esbuilder";
@@ -37,6 +39,7 @@ type Options = {
   fetchModulePrefix?: string;
   sourceFiles?: string | string[];
   templates?: Partial<Templates>;
+  codeFormatter?: CodeFormatter;
 };
 
 type Route = {
@@ -131,6 +134,7 @@ export async function vitePluginApprilApi(opts: Options): Promise<Plugin> {
     fetchFilter = (_r) => true,
     sourceFiles = "**/*_routes.yml",
     apiHmrFlushPatterns,
+    codeFormatter,
   } = opts;
 
   const sourceFolder = basename(resolvePath());
@@ -164,8 +168,9 @@ export async function vitePluginApprilApi(opts: Options): Promise<Plugin> {
     apiFiles: {},
   };
 
-  const readTemplate = (file: string) =>
-    fsx.readFile(/^\//.test(file) ? file : resolvePath(file), "utf8");
+  const readTemplate = (file: string) => {
+    return fsx.readFile(/^\//.test(file) ? file : resolvePath(file), "utf8");
+  };
 
   const templates = { ...defaultTemplates };
 
@@ -198,7 +203,7 @@ export async function vitePluginApprilApi(opts: Options): Promise<Plugin> {
       name,
       importName: fetchModuleId.replace(/\W/g, "_"),
       watchFiles: [file],
-      code: render(fetchMdlTpl, {
+      code: await render(fetchMdlTpl, {
         apiDir,
         sourceFolder,
         fetchTypes,
@@ -216,9 +221,11 @@ export async function vitePluginApprilApi(opts: Options): Promise<Plugin> {
   };
 
   async function configResolved() {
-    for (const pattern of Array.isArray(sourceFiles)
+    const patterns = Array.isArray(sourceFiles)
       ? [...sourceFiles]
-      : [sourceFiles]) {
+      : [sourceFiles];
+
+    for (const pattern of patterns) {
       for (const file of await glob(pattern, { cwd: resolvePath(apiDir) })) {
         const filePath = resolvePath(apiDir, file);
 
@@ -291,12 +298,15 @@ export async function vitePluginApprilApi(opts: Options): Promise<Plugin> {
                 ? await readTemplate(routeSetup?.template)
                 : templates.route;
 
-              const content = render(template, {
-                ...routeSetup,
-                ...routeMap[path],
-              });
-
-              await fsx.outputFile(file, content, "utf8");
+              await renderToFile(
+                file,
+                template,
+                {
+                  ...routeSetup,
+                  ...routeMap[path],
+                },
+                { format: codeFormatter },
+              );
             }
 
             if (fetchModuleId) {
@@ -315,7 +325,7 @@ export async function vitePluginApprilApi(opts: Options): Promise<Plugin> {
                   name: "Not supposed to be imported!",
                   importName: "Not supposed to be imported!",
                   watchFiles: [fetchDtsFile],
-                  code: render(fetchIdxTpl, {
+                  code: await render(fetchIdxTpl, {
                     apiDir,
                     sourceFolder,
                     modules,
@@ -325,29 +335,31 @@ export async function vitePluginApprilApi(opts: Options): Promise<Plugin> {
                 // (re)generating fetch files when some api file updated
 
                 // generating file contaning ambient fetch modules
-                await fsx.outputFile(
+                await renderToFile(
                   fetchDtsFile,
-                  render(fetchDtsTpl, {
+                  fetchDtsTpl,
+                  {
                     BANNER,
                     apiDir,
                     sourceFolder,
                     modules,
                     defaultModuleId: fetchModulePrefix,
-                  }),
-                  "utf8",
+                  },
+                  { format: codeFormatter },
                 );
 
                 // generating {apiDir}/_fetch.ts for access from outside sourceFolder,
                 // eg. when need access to @admin fetch modules from inside @front sourceFolder
-                await fsx.outputFile(
+                await renderToFile(
                   fetchIdxFile,
-                  render(fetchIdxTpl, {
+                  fetchIdxTpl,
+                  {
                     BANNER,
                     apiDir,
                     sourceFolder,
                     modules,
-                  }),
-                  "utf8",
+                  },
+                  { format: codeFormatter },
                 );
               };
             }
@@ -366,14 +378,17 @@ export async function vitePluginApprilApi(opts: Options): Promise<Plugin> {
             ["_routes.ts", templates.routes, routesWithAlias],
             ["_urlmap.ts", templates.urlmap, routesNoAlias],
           ] as const) {
-            const content = render(template, {
-              BANNER,
-              apiDir,
-              sourceFolder,
-              routes,
-            });
-
-            await fsx.outputFile(resolvePath(apiDir, outFile), content, "utf8");
+            await renderToFile(
+              resolvePath(apiDir, outFile),
+              template,
+              {
+                BANNER,
+                apiDir,
+                sourceFolder,
+                routes,
+              },
+              { format: codeFormatter },
+            );
           }
         };
       }

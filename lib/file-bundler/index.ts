@@ -1,13 +1,13 @@
 import * as fs from "fs/promises";
 
 import { glob } from "glob";
-import fsx from "fs-extra";
 
 import { resolvePath } from "../base";
-import { BANNER, render } from "../render";
+import { BANNER, renderToFile } from "../render";
 
 import type { Plugin, ResolvedConfig } from "vite";
 import type { Path } from "path-scurry";
+import type { CodeFormatter } from "../@types";
 
 type ContextFolder = {
   folder: string;
@@ -44,7 +44,12 @@ type ResolvedFile = {
   match: Path;
 };
 
-export function vitePluginFileBundler(entries: Entry[]): Plugin {
+export function vitePluginFileBundler(
+  entries: Entry[],
+  opts?: { codeFormatter?: CodeFormatter },
+): Plugin {
+  const { codeFormatter } = { ...opts };
+
   async function resolveFiles(
     config: ResolvedConfig,
     entry: Required<Entry>,
@@ -137,9 +142,15 @@ export function vitePluginFileBundler(entries: Entry[]): Plugin {
         folders: entry.folders.map(folderMapper),
       });
 
-      const content = render(template, { BANNER, ...context });
-
-      await fsx.outputFile(resolvePath(entry.outfile), content);
+      await renderToFile(
+        resolvePath(entry.outfile),
+        template,
+        {
+          BANNER,
+          ...context,
+        },
+        { format: codeFormatter },
+      );
     }
   }
 

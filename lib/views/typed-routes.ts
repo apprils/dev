@@ -1,5 +1,4 @@
 import type { ExportedView } from "./@types";
-import { BANNER, render } from "../render";
 
 type Param = {
   name: string;
@@ -9,9 +8,8 @@ type Param = {
   type: string;
 };
 
-export function typedRoutes(template: string, views: ExportedView[]): string {
-  const routes = views.map(typedRoute);
-  return render(template, { BANNER, routes });
+export function typedRoutes(views: ExportedView[]) {
+  return views.map(typedRoute);
 }
 
 function typedRoute(

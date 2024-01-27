@@ -1,12 +1,13 @@
-import { basename, resolve, join } from "path";
+import { basename, join } from "path";
 import { readFile } from "fs/promises";
 
 import type { Plugin, ResolvedConfig } from "vite";
 import fsx from "fs-extra";
 import { parse, stringify } from "yaml";
 
+import type { CodeFormatter } from "../@types";
 import type { View, ExportedView } from "./@types";
-import { BANNER, render } from "../render";
+import { BANNER, renderToFile } from "../render";
 import { resolvePath, sanitizePath } from "../base";
 import { typedRoutes } from "./typed-routes";
 
@@ -28,11 +29,12 @@ type TemplateName = keyof typeof defaultTemplates;
 type TemplateMap = Record<TemplateName, string>;
 
 type Options = {
-  routesDir: string;
-  viewsDir: string;
-  storesDir: string;
-  apiDir: string;
-  templates: Partial<TemplateMap>;
+  routesDir?: string;
+  viewsDir?: string;
+  storesDir?: string;
+  apiDir?: string;
+  templates?: Partial<TemplateMap>;
+  codeFormatter?: CodeFormatter;
 };
 
 type ViewDefinition = {
@@ -81,14 +83,15 @@ some-view:
  * @param {string} [opts.apiDir="api"] - path to api folder
  * @param {object} [opts.templates={}] - custom templates
  */
-export function vitePluginApprilViews(opts: Partial<Options> = {}): Plugin {
+export function vitePluginApprilViews(opts?: Options): Plugin {
   const {
     routesDir = "router",
     viewsDir = "views",
     storesDir = "stores",
     apiDir = "api",
     templates: optedTemplates = {},
-  } = opts;
+    codeFormatter,
+  } = { ...opts };
 
   const sourceFolder = basename(resolvePath());
 
@@ -156,8 +159,7 @@ export function vitePluginApprilViews(opts: Partial<Options> = {}): Plugin {
       const viewFile = resolvePath(viewsDir, view.file);
 
       if (!(await fsx.pathExists(viewFile))) {
-        const content = render(templates.view, view);
-        await fsx.outputFile(viewFile, content, "utf8");
+        await renderToFile(viewFile, templates.view, {});
       }
 
       const serialized = JSON.stringify({
@@ -172,33 +174,38 @@ export function vitePluginApprilViews(opts: Partial<Options> = {}): Plugin {
       [resolvePath(routesDir, "_routes.ts"), templates.routes],
       [resolvePath(routesDir, "_urlmap.ts"), templates.urlmap],
     ]) {
-      const content = render(template, {
-        BANNER,
-        sourceFolder,
-        views,
-        viewsDir,
-        storesDir,
-      });
-
-      await fsx.outputFile(outfile, content, "utf8");
+      await renderToFile(
+        outfile,
+        template,
+        {
+          BANNER,
+          sourceFolder,
+          views,
+          viewsDir,
+          storesDir,
+        },
+        { format: codeFormatter },
+      );
     }
 
-    await fsx.outputFile(
+    await renderToFile(
       resolvePath(routesDir, "_routes.d.ts"),
-      typedRoutes(templates.typedRoutes, views),
-      "utf8",
+      templates.typedRoutes,
+      { BANNER, routes: typedRoutes(views) },
+      { format: codeFormatter },
     );
 
-    {
-      const content = render(templates.envStore, {
+    await renderToFile(
+      resolvePath(storesDir, "env.ts"),
+      templates.envStore,
+      {
         BANNER,
         sourceFolder,
         apiDir,
         viewsWithEnvApi: views.filter((e) => e.envApi),
-      });
-
-      await fsx.outputFile(resolvePath(storesDir, "env.ts"), content, "utf8");
-    }
+      },
+      { format: codeFormatter },
+    );
 
     {
       const reducer = (map: Record<string, {}>, { envApi }: View) => ({

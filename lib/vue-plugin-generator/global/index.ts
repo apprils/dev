@@ -1,14 +1,15 @@
 import { readFile } from "fs/promises";
 
 import type { Plugin, ResolvedConfig } from "vite";
-import fsx from "fs-extra";
+
+import { resolvePath } from "../../base";
+import { BANNER, renderToFile } from "../../render";
+
+import type { CodeFormatter } from "../../@types";
 
 import envTpl from "./templates/env.tpl";
 import indexTpl from "./templates/index.tpl";
 import pluginTpl from "./templates/plugin.tpl";
-
-import { resolvePath } from "../../base";
-import { BANNER, render } from "../../render";
 
 const defaultTemplates = {
   plugin: pluginTpl,
@@ -26,16 +27,20 @@ type Options = {
   plugins: Record<string, PluginDefinition>;
   outDir?: string;
   templates?: Partial<TemplateMap>;
+  codeFormatter?: CodeFormatter;
 };
 
 type TemplateName = keyof typeof defaultTemplates;
 type TemplateMap = Record<TemplateName, string>;
 
-export function vitePluginVuePluginsGlobal({
-  plugins,
-  outDir = "plugins/generated/global",
-  templates: optedTemplates = {},
-}: Options): Plugin {
+export default function globalPluginsGenerator(opts: Options): Plugin {
+  const {
+    plugins,
+    outDir = "plugins/generated/global",
+    templates: optedTemplates = {},
+    codeFormatter,
+  } = { ...opts };
+
   async function generateFiles({ root }: ResolvedConfig) {
     // re-reading templates every time
 
@@ -75,17 +80,18 @@ export function vitePluginVuePluginsGlobal({
         },
       );
 
-      {
-        const content = render(templates.plugin, {
+      await renderToFile(
+        resolvePath(outDir, pluginName + ".ts"),
+        templates.plugin,
+        {
           BANNER,
           path,
           pluginName,
           globalProperties: globalPropertiesNames,
           template: optedTemplates.plugin,
-        });
-
-        await fsx.outputFile(resolvePath(outDir, pluginName + ".ts"), content);
-      }
+        },
+        { format: codeFormatter },
+      );
 
       generatedPlugins.push({
         pluginName,
@@ -93,25 +99,27 @@ export function vitePluginVuePluginsGlobal({
       });
     }
 
-    {
-      const content = render(templates.env, {
+    await renderToFile(
+      resolvePath(outDir, "env.d.ts"),
+      templates.env,
+      {
         BANNER,
         generatedPlugins,
         template: optedTemplates.env,
-      });
+      },
+      { format: codeFormatter },
+    );
 
-      await fsx.outputFile(resolvePath(outDir, "env.d.ts"), content);
-    }
-
-    {
-      const content = render(templates.index, {
+    await renderToFile(
+      resolvePath(outDir, "index.ts"),
+      templates.index,
+      {
         BANNER,
         generatedPlugins,
         template: optedTemplates.index,
-      });
-
-      await fsx.outputFile(resolvePath(outDir, "index.ts"), content);
-    }
+      },
+      { format: codeFormatter },
+    );
   }
 
   return {
