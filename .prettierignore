@@ -1,0 +1,6 @@
+
+pkg
+var
+**/@type*.ts
+**/tsconfig*.json
+

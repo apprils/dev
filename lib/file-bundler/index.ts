@@ -1,4 +1,3 @@
-
 import * as fs from "fs/promises";
 
 import { glob } from "glob";
@@ -13,14 +12,14 @@ import type { Path } from "path-scurry";
 type ContextFolder = {
   folder: string;
   files: ResolvedFile[];
-}
+};
 
 type Context = {
   files: ResolvedFile[];
   folders: ContextFolder[];
-}
+};
 
-type ContextHandler = (data: Context) => any
+type ContextHandler = (data: Context) => any;
 
 type Entry = {
   path: string;
@@ -31,7 +30,7 @@ type Entry = {
   template: string;
   outfile: string;
   context?: ContextHandler;
-}
+};
 
 type ResolvedFile = {
   name: string;
@@ -43,72 +42,62 @@ type ResolvedFile = {
   importPath: string;
   content: string;
   match: Path;
-}
+};
 
-export function vitePluginFileBundler(
-  entries: Entry[],
-): Plugin {
-
+export function vitePluginFileBundler(entries: Entry[]): Plugin {
   async function resolveFiles(
     config: ResolvedConfig,
     entry: Required<Entry>,
   ): Promise<ResolvedFile[]> {
-
-    let files: ResolvedFile[] = []
+    let files: ResolvedFile[] = [];
 
     const patterns = Array.isArray(entry.pattern)
       ? entry.pattern
-      : [ entry.pattern ]
+      : [entry.pattern];
 
-    const { folders } = entry
+    const { folders } = entry;
 
     const patternMapper = (p: string) => {
       return folders.length
         ? folders.map((f) => resolvePath(entry.path, f, p))
-        : [ resolvePath(entry.path, p) ]
-    }
+        : [resolvePath(entry.path, p)];
+    };
 
-    const matches = await glob(
-      patterns.flatMap(patternMapper),
-      {
-        cwd: resolvePath(entry.path),
-        withFileTypes: true,
-        ignore: [
-          ...Array.isArray(entry.ignore)
-            ? entry.ignore
-            : entry.ignore ? [ entry.ignore ] : [],
-          ...Array.isArray(entry.defaultIgnore)
-            ? entry.defaultIgnore
-            : entry.defaultIgnore ? [ entry.defaultIgnore ] : [],
-        ],
-      }
-    )
+    const matches = await glob(patterns.flatMap(patternMapper), {
+      cwd: resolvePath(entry.path),
+      withFileTypes: true,
+      ignore: [
+        ...(Array.isArray(entry.ignore)
+          ? entry.ignore
+          : entry.ignore
+            ? [entry.ignore]
+            : []),
+        ...(Array.isArray(entry.defaultIgnore)
+          ? entry.defaultIgnore
+          : entry.defaultIgnore
+            ? [entry.defaultIgnore]
+            : []),
+      ],
+    });
 
     for (const match of matches) {
-
       if (match.isDirectory()) {
+        const entryFiles = await resolveFiles(config, entry);
 
-        const entryFiles = await resolveFiles(
-          config,
-          entry,
-        )
-
-        files.push(...entryFiles)
-
-      }
-      else if (match.isFile()) {
-
+        files.push(...entryFiles);
+      } else if (match.isFile()) {
         if (match.name === entry.outfile) {
-          continue
+          continue;
         }
 
-        const name = match.relative().replace(/\.([^.]+)$/, "")
-        const folder = entry.folders.find((f) => new RegExp(`^${ f }/`).test(name)) || ""
-        const content = await fs.readFile(match.fullpath(), "utf8")
+        const name = match.relative().replace(/\.([^.]+)$/, "");
+        const folder =
+          entry.folders.find((f) => new RegExp(`^${f}/`).test(name)) || "";
+        const content = await fs.readFile(match.fullpath(), "utf8");
 
         files.push({
           name,
-          basename: folder ? name.replace(new RegExp(`^${ folder }/`), "") : name,
+          basename: folder ? name.replace(new RegExp(`^${folder}/`), "") : name,
           path: match.fullpath(),
           relativePath: match.relative(),
           folder,
@@ -116,52 +105,46 @@ export function vitePluginFileBundler(
           importPath: "./" + name,
           content,
           match,
-        })
-
+        });
       }
-
     }
 
-    return files.sort((a, b) => a.name.localeCompare(b.name))
-
+    return files.sort((a, b) => a.name.localeCompare(b.name));
   }
 
   async function generateFiles(config: ResolvedConfig) {
-
     for (const _entry of entries) {
-
       const entry: Required<Entry> = {
         pattern: "**/*.ts",
         folders: [],
         ignore: [],
-        defaultIgnore: [ "**/_*", "**/@*" ],
+        defaultIgnore: ["**/_*", "**/@*"],
         context: (data) => data,
         ..._entry,
-      }
+      };
 
-      const files = await resolveFiles(config, entry)
+      const files = await resolveFiles(config, entry);
 
-      const template = await fs.readFile(resolvePath(entry.template), "utf8")
+      const template = await fs.readFile(resolvePath(entry.template), "utf8");
 
-      const folderMapper = (folder: string) => ({ folder, files: files.filter((f) => f.folder === folder) })
+      const folderMapper = (folder: string) => ({
+        folder,
+        files: files.filter((f) => f.folder === folder),
+      });
 
       const context = entry.context({
         files,
         folders: entry.folders.map(folderMapper),
-      })
+      });
 
-      const content = render(template, { BANNER, ...context })
+      const content = render(template, { BANNER, ...context });
 
-      await fsx.outputFile(resolvePath(entry.outfile), content)
-
+      await fsx.outputFile(resolvePath(entry.outfile), content);
     }
-
   }
 
   return {
     name: "vite-plugin-file-bundler",
     configResolved: generateFiles,
-  }
-
+  };
 }
-

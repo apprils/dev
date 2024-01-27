@@ -1,4 +1,3 @@
-
 import { basename, resolve, join } from "path";
 import { readFile } from "fs/promises";
 
@@ -8,7 +7,7 @@ import { parse, stringify } from "yaml";
 
 import type { View, ExportedView } from "./@types";
 import { BANNER, render } from "../render";
-import { sanitizePath } from "../base";
+import { resolvePath, sanitizePath } from "../base";
 import { typedRoutes } from "./typed-routes";
 
 import viewTpl from "./templates/view.tpl";
@@ -23,10 +22,10 @@ const defaultTemplates = {
   typedRoutes: typedRoutesTpl,
   urlmap: urlmapTpl,
   envStore: envStoreTpl,
-}
+};
 
-type TemplateName = keyof typeof defaultTemplates
-type TemplateMap = Record<TemplateName, string>
+type TemplateName = keyof typeof defaultTemplates;
+type TemplateMap = Record<TemplateName, string>;
 
 type Options = {
   routesDir: string;
@@ -34,14 +33,14 @@ type Options = {
   storesDir: string;
   apiDir: string;
   templates: Partial<TemplateMap>;
-}
+};
 
 type ViewDefinition = {
   params?: string;
   meta?: any;
   options?: Record<string, any>;
   env?: string | boolean;
-}
+};
 
 /** {viewsDir}/_views.yml schema:
 
@@ -82,60 +81,60 @@ some-view:
  * @param {string} [opts.apiDir="api"] - path to api folder
  * @param {object} [opts.templates={}] - custom templates
  */
-export function vitePluginApprilViews(
-  opts: Partial<Options> = {},
-): Plugin {
-
+export function vitePluginApprilViews(opts: Partial<Options> = {}): Plugin {
   const {
     routesDir = "router",
     viewsDir = "views",
     storesDir = "stores",
     apiDir = "api",
     templates: optedTemplates = {},
-  } = opts
+  } = opts;
 
-  const rootPath = (...path: string[]) => resolve(String(process.env.PWD), join(...path))
+  const sourceFolder = basename(resolvePath());
 
-  const sourceFolder = basename(rootPath())
+  const viewsFile = join(viewsDir, "_views.yml");
 
-  const viewsFile = join(viewsDir, "_views.yml")
-
-  async function generateFiles(
-    { base }: ResolvedConfig,
-  ) {
-
+  async function generateFiles({ base }: ResolvedConfig) {
     // re-reading files every time
 
-    const templates: TemplateMap = { ...defaultTemplates }
+    const templates: TemplateMap = { ...defaultTemplates };
 
-    for (const [ name, file ] of Object.entries(optedTemplates)) {
-      templates[name as TemplateName] = await readFile(rootPath(file), "utf8")
+    for (const [name, file] of Object.entries(optedTemplates)) {
+      templates[name as TemplateName] = await readFile(
+        resolvePath(file),
+        "utf8",
+      );
     }
 
-    const viewDefinitions = parse(await readFile(rootPath(viewsFile), "utf8"))
-    const viewEntries: [ string, ViewDefinition][] = Object.entries(viewDefinitions).map(([p,d]) => [ p, d || {} ])
+    const viewDefinitions = parse(
+      await readFile(resolvePath(viewsFile), "utf8"),
+    );
+    const viewEntries: [string, ViewDefinition][] = Object.entries(
+      viewDefinitions,
+    ).map(([p, d]) => [p, d || {}]);
 
-    const views: ExportedView[] = []
+    const views: ExportedView[] = [];
 
-    for (const [ viewPath, viewDefinition ] of viewEntries) {
-
-      const importPath = sanitizePath(viewPath).replace(/\/+$/, "")
+    for (const [viewPath, viewDefinition] of viewEntries) {
+      const importPath = sanitizePath(viewPath).replace(/\/+$/, "");
 
       const suffix = /\/$/.test(viewPath)
         ? "/" + basename(importPath) + ".vue"
-        : ".vue"
+        : ".vue";
 
-      const path = join(base, importPath.replace(/^index$/, "")).replace(/\/$/, "")
+      const path = join(base, importPath.replace(/^index$/, "")).replace(
+        /\/$/,
+        "",
+      );
 
-      const { env } = viewDefinition
+      const { env } = viewDefinition;
 
-      let envApi: string | undefined
+      let envApi: string | undefined;
 
       if (typeof env === "string") {
-        envApi = env
-      }
-      else if (env === true) {
-        envApi = join(viewPath, "env")
+        envApi = env;
+      } else if (env === true) {
+        envApi = join(viewPath, "env");
       }
 
       const view: View = {
@@ -143,122 +142,102 @@ export function vitePluginApprilViews(
         importName: importPath.replace(/\W/g, "_"),
         path,
         params: String(viewDefinition.params || ""),
-        meta: JSON.stringify("meta" in viewDefinition ? viewDefinition.meta : {}),
-        options: JSON.stringify("options" in viewDefinition ? viewDefinition.options : {}),
+        meta: JSON.stringify(
+          "meta" in viewDefinition ? viewDefinition.meta : {},
+        ),
+        options: JSON.stringify(
+          "options" in viewDefinition ? viewDefinition.options : {},
+        ),
         importPath: importPath + suffix,
         file: importPath + suffix,
         envApi,
-      }
+      };
 
-      const viewFile = rootPath(viewsDir, view.file)
+      const viewFile = resolvePath(viewsDir, view.file);
 
-      if (!await fsx.pathExists(viewFile)) {
-        const content = render(templates.view, view)
-        await fsx.outputFile(viewFile, content, "utf8")
+      if (!(await fsx.pathExists(viewFile))) {
+        const content = render(templates.view, view);
+        await fsx.outputFile(viewFile, content, "utf8");
       }
 
       const serialized = JSON.stringify({
         name: view.name,
         path: view.path,
-      })
+      });
 
-      views.push({ ...view, serialized })
-
+      views.push({ ...view, serialized });
     }
 
-    for (const [ outfile, template ] of [
-      [ rootPath(routesDir, "_routes.ts"), templates.routes ],
-      [ rootPath(routesDir, "_urlmap.ts"), templates.urlmap ],
+    for (const [outfile, template] of [
+      [resolvePath(routesDir, "_routes.ts"), templates.routes],
+      [resolvePath(routesDir, "_urlmap.ts"), templates.urlmap],
     ]) {
-
       const content = render(template, {
         BANNER,
         sourceFolder,
         views,
         viewsDir,
         storesDir,
-      })
+      });
 
-      await fsx.outputFile(outfile, content, "utf8")
-
+      await fsx.outputFile(outfile, content, "utf8");
     }
 
     await fsx.outputFile(
-      rootPath(routesDir, "_routes.d.ts"),
+      resolvePath(routesDir, "_routes.d.ts"),
       typedRoutes(templates.typedRoutes, views),
-      "utf8"
-    )
+      "utf8",
+    );
 
     {
-
       const content = render(templates.envStore, {
         BANNER,
         sourceFolder,
         apiDir,
         viewsWithEnvApi: views.filter((e) => e.envApi),
-      })
+      });
 
-      await fsx.outputFile(
-        rootPath(storesDir, "env.ts"),
-        content,
-        "utf8"
-      )
-
+      await fsx.outputFile(resolvePath(storesDir, "env.ts"), content, "utf8");
     }
 
     {
-
       const reducer = (map: Record<string, {}>, { envApi }: View) => ({
         ...map,
-        ...envApi
-          ? { [envApi]: {} }
-          : {}
-      })
+        ...(envApi ? { [envApi]: {} } : {}),
+      });
 
       const content = [
         BANNER.trim().replace(/^/gm, "#"),
         stringify(views.reduce(reducer, {})),
-      ].join("\n")
+      ].join("\n");
 
       await fsx.outputFile(
-        rootPath(apiDir, "_000_env_routes.yml"),
+        resolvePath(apiDir, "_000_env_routes.yml"),
         content,
-        "utf8"
-      )
-
+        "utf8",
+      );
     }
-
   }
 
   return {
-
     name: "vite-plugin-appril-views",
 
     configResolved: generateFiles,
 
     configureServer(server) {
-
       // adding optedTemplates to watchlist
 
-      const watchedFiles = [
-        ...Object.values(optedTemplates),
-      ]
+      const watchedFiles = [...Object.values(optedTemplates)];
 
       if (watchedFiles.length) {
+        server.watcher.add(watchedFiles);
 
-        server.watcher.add(watchedFiles)
-
-        server.watcher.on("change", function(file) {
+        server.watcher.on("change", function (file) {
           if (watchedFiles.some((path) => file.includes(path))) {
-            return generateFiles(server.config)
+            return generateFiles(server.config);
           }
-        })
-
+        });
       }
-
     },
-
-  }
-
+  };
 }
-

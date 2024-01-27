@@ -1,5 +1,5 @@
 {
   "interactive": true,
   "upgrade": true,
-  "dep": ["prod","dev","peer"]
+  "dep": ["prod", "dev", "peer"]
 }
