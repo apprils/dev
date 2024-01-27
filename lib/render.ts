@@ -1,8 +1,6 @@
 import fsx from "fs-extra";
 import mustache from "mustache";
 
-import type { RenderOptions } from "./@types";
-
 const generator = require("../package.json");
 
 // disabling escape
@@ -15,17 +13,14 @@ export const BANNER = `/**
 export async function render<Context = {}>(
   template: string,
   context: Context,
-  opts?: RenderOptions,
 ): Promise<string> {
-  const content = mustache.render(template, { ...context });
-  return opts?.format ? opts.format(content) : content;
+  return mustache.render(template, context);
 }
 
 export async function renderToFile<Context = {}>(
   file: string,
   template: string,
   context: Context,
-  opts?: RenderOptions,
 ): Promise<void> {
-  return fsx.outputFile(file, await render(template, context, opts), "utf8");
+  return fsx.outputFile(file, await render(template, context), "utf8");
 }

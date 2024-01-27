@@ -5,7 +5,6 @@ import type { Plugin, ResolvedConfig } from "vite";
 import fsx from "fs-extra";
 import { parse, stringify } from "yaml";
 
-import type { CodeFormatter } from "../@types";
 import type { View, ExportedView } from "./@types";
 import { BANNER, renderToFile } from "../render";
 import { resolvePath, sanitizePath } from "../base";
@@ -34,7 +33,6 @@ type Options = {
   storesDir?: string;
   apiDir?: string;
   templates?: Partial<TemplateMap>;
-  codeFormatter?: CodeFormatter;
 };
 
 type ViewDefinition = {
@@ -90,7 +88,6 @@ export function vitePluginApprilViews(opts?: Options): Plugin {
     storesDir = "stores",
     apiDir = "api",
     templates: optedTemplates = {},
-    codeFormatter,
   } = { ...opts };
 
   const sourceFolder = basename(resolvePath());
@@ -174,38 +171,27 @@ export function vitePluginApprilViews(opts?: Options): Plugin {
       [resolvePath(routesDir, "_routes.ts"), templates.routes],
       [resolvePath(routesDir, "_urlmap.ts"), templates.urlmap],
     ]) {
-      await renderToFile(
-        outfile,
-        template,
-        {
-          BANNER,
-          sourceFolder,
-          views,
-          viewsDir,
-          storesDir,
-        },
-        { format: codeFormatter },
-      );
+      await renderToFile(outfile, template, {
+        BANNER,
+        sourceFolder,
+        views,
+        viewsDir,
+        storesDir,
+      });
     }
 
     await renderToFile(
       resolvePath(routesDir, "_routes.d.ts"),
       templates.typedRoutes,
       { BANNER, routes: typedRoutes(views) },
-      { format: codeFormatter },
     );
 
-    await renderToFile(
-      resolvePath(storesDir, "env.ts"),
-      templates.envStore,
-      {
-        BANNER,
-        sourceFolder,
-        apiDir,
-        viewsWithEnvApi: views.filter((e) => e.envApi),
-      },
-      { format: codeFormatter },
-    );
+    await renderToFile(resolvePath(storesDir, "env.ts"), templates.envStore, {
+      BANNER,
+      sourceFolder,
+      apiDir,
+      viewsWithEnvApi: views.filter((e) => e.envApi),
+    });
 
     {
       const reducer = (map: Record<string, {}>, { envApi }: View) => ({

@@ -7,7 +7,6 @@ import { BANNER, renderToFile } from "../render";
 
 import type { Plugin, ResolvedConfig } from "vite";
 import type { Path } from "path-scurry";
-import type { CodeFormatter } from "../@types";
 
 type ContextFolder = {
   folder: string;
@@ -44,12 +43,7 @@ type ResolvedFile = {
   match: Path;
 };
 
-export function vitePluginFileBundler(
-  entries: Entry[],
-  opts?: { codeFormatter?: CodeFormatter },
-): Plugin {
-  const { codeFormatter } = { ...opts };
-
+export function vitePluginFileBundler(entries: Entry[]): Plugin {
   async function resolveFiles(
     config: ResolvedConfig,
     entry: Required<Entry>,
@@ -142,15 +136,10 @@ export function vitePluginFileBundler(
         folders: entry.folders.map(folderMapper),
       });
 
-      await renderToFile(
-        resolvePath(entry.outfile),
-        template,
-        {
-          BANNER,
-          ...context,
-        },
-        { format: codeFormatter },
-      );
+      await renderToFile(resolvePath(entry.outfile), template, {
+        BANNER,
+        ...context,
+      });
     }
   }
 

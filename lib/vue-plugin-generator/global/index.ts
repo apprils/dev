@@ -5,8 +5,6 @@ import type { Plugin, ResolvedConfig } from "vite";
 import { resolvePath } from "../../base";
 import { BANNER, renderToFile } from "../../render";
 
-import type { CodeFormatter } from "../../@types";
-
 import envTpl from "./templates/env.tpl";
 import indexTpl from "./templates/index.tpl";
 import pluginTpl from "./templates/plugin.tpl";
@@ -27,7 +25,6 @@ type Options = {
   plugins: Record<string, PluginDefinition>;
   outDir?: string;
   templates?: Partial<TemplateMap>;
-  codeFormatter?: CodeFormatter;
 };
 
 type TemplateName = keyof typeof defaultTemplates;
@@ -38,7 +35,6 @@ export default function globalPluginsGenerator(opts: Options): Plugin {
     plugins,
     outDir = "plugins/generated/global",
     templates: optedTemplates = {},
-    codeFormatter,
   } = { ...opts };
 
   async function generateFiles({ root }: ResolvedConfig) {
@@ -90,7 +86,6 @@ export default function globalPluginsGenerator(opts: Options): Plugin {
           globalProperties: globalPropertiesNames,
           template: optedTemplates.plugin,
         },
-        { format: codeFormatter },
       );
 
       generatedPlugins.push({
@@ -99,27 +94,17 @@ export default function globalPluginsGenerator(opts: Options): Plugin {
       });
     }
 
-    await renderToFile(
-      resolvePath(outDir, "env.d.ts"),
-      templates.env,
-      {
-        BANNER,
-        generatedPlugins,
-        template: optedTemplates.env,
-      },
-      { format: codeFormatter },
-    );
+    await renderToFile(resolvePath(outDir, "env.d.ts"), templates.env, {
+      BANNER,
+      generatedPlugins,
+      template: optedTemplates.env,
+    });
 
-    await renderToFile(
-      resolvePath(outDir, "index.ts"),
-      templates.index,
-      {
-        BANNER,
-        generatedPlugins,
-        template: optedTemplates.index,
-      },
-      { format: codeFormatter },
-    );
+    await renderToFile(resolvePath(outDir, "index.ts"), templates.index, {
+      BANNER,
+      generatedPlugins,
+      template: optedTemplates.index,
+    });
   }
 
   return {

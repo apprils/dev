@@ -7,8 +7,6 @@ import { parse } from "yaml";
 
 import { type BuildOptions, transform } from "esbuild";
 
-import type { CodeFormatter } from "../@types";
-
 import { BANNER, render, renderToFile } from "../render";
 import { resolvePath, sanitizePath } from "../base";
 import { extractTypedEndpoints } from "./ast";
@@ -39,7 +37,6 @@ type Options = {
   fetchModulePrefix?: string;
   sourceFiles?: string | string[];
   templates?: Partial<Templates>;
-  codeFormatter?: CodeFormatter;
 };
 
 type Route = {
@@ -134,7 +131,6 @@ export async function vitePluginApprilApi(opts: Options): Promise<Plugin> {
     fetchFilter = (_r) => true,
     sourceFiles = "**/*_routes.yml",
     apiHmrFlushPatterns,
-    codeFormatter,
   } = opts;
 
   const sourceFolder = basename(resolvePath());
@@ -298,15 +294,10 @@ export async function vitePluginApprilApi(opts: Options): Promise<Plugin> {
                 ? await readTemplate(routeSetup?.template)
                 : templates.route;
 
-              await renderToFile(
-                file,
-                template,
-                {
-                  ...routeSetup,
-                  ...routeMap[path],
-                },
-                { format: codeFormatter },
-              );
+              await renderToFile(file, template, {
+                ...routeSetup,
+                ...routeMap[path],
+              });
             }
 
             if (fetchModuleId) {
@@ -335,32 +326,22 @@ export async function vitePluginApprilApi(opts: Options): Promise<Plugin> {
                 // (re)generating fetch files when some api file updated
 
                 // generating file contaning ambient fetch modules
-                await renderToFile(
-                  fetchDtsFile,
-                  fetchDtsTpl,
-                  {
-                    BANNER,
-                    apiDir,
-                    sourceFolder,
-                    modules,
-                    defaultModuleId: fetchModulePrefix,
-                  },
-                  { format: codeFormatter },
-                );
+                await renderToFile(fetchDtsFile, fetchDtsTpl, {
+                  BANNER,
+                  apiDir,
+                  sourceFolder,
+                  modules,
+                  defaultModuleId: fetchModulePrefix,
+                });
 
                 // generating {apiDir}/_fetch.ts for access from outside sourceFolder,
                 // eg. when need access to @admin fetch modules from inside @front sourceFolder
-                await renderToFile(
-                  fetchIdxFile,
-                  fetchIdxTpl,
-                  {
-                    BANNER,
-                    apiDir,
-                    sourceFolder,
-                    modules,
-                  },
-                  { format: codeFormatter },
-                );
+                await renderToFile(fetchIdxFile, fetchIdxTpl, {
+                  BANNER,
+                  apiDir,
+                  sourceFolder,
+                  modules,
+                });
               };
             }
           }
@@ -378,17 +359,12 @@ export async function vitePluginApprilApi(opts: Options): Promise<Plugin> {
             ["_routes.ts", templates.routes, routesWithAlias],
             ["_urlmap.ts", templates.urlmap, routesNoAlias],
           ] as const) {
-            await renderToFile(
-              resolvePath(apiDir, outFile),
-              template,
-              {
-                BANNER,
-                apiDir,
-                sourceFolder,
-                routes,
-              },
-              { format: codeFormatter },
-            );
+            await renderToFile(resolvePath(apiDir, outFile), template, {
+              BANNER,
+              apiDir,
+              sourceFolder,
+              routes,
+            });
           }
         };
       }
@@ -430,13 +406,14 @@ export async function vitePluginApprilApi(opts: Options): Promise<Plugin> {
 
     async transform(src, id) {
       if (id === fetchIdxFile) {
+        const hmrHandler = await render(fetchHmrTpl, {});
         return {
-          code: src + render(fetchHmrTpl, {}),
+          code: src + hmrHandler,
         };
       }
 
       if (virtualModules.fetch[id]) {
-        const hmrHandler = render(fetchHmrTpl, virtualModules.fetch[id]);
+        const hmrHandler = await render(fetchHmrTpl, virtualModules.fetch[id]);
         const { code } = await transform(src + hmrHandler, {
           loader: "ts",
         });
