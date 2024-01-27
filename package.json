@@ -27,7 +27,7 @@
     "esbundler": "func() { e=$1; shift; esbuild $e --bundle --platform=node --target=node20 --packages=external --loader:.tpl=text $*; }; func",
     "prebuild": "mkdir -p pkg; find pkg -type f -exec rm -fv {} \\;",
     "build": "npm run esbundler -- lib/index.ts --sourcemap=inline --outdir=pkg",
-    "postbuild": "tsc -p lib/tsconfig.json"
+    "postbuild": "tsc"
   },
   "release-it": {
     "hooks": {
