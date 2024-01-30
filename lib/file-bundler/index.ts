@@ -1,9 +1,10 @@
-import * as fs from "fs/promises";
+import { basename, join } from "path";
 
+import fsx from "fs-extra";
 import { glob } from "glob";
 
-import { resolvePath } from "../base";
-import { BANNER, renderToFile } from "../render";
+import { resolvePath, filesGeneratorFactory } from "../base";
+import { BANNER } from "../render";
 
 import type { Plugin, ResolvedConfig } from "vite";
 import type { Path } from "path-scurry";
@@ -43,7 +44,11 @@ type ResolvedFile = {
   match: Path;
 };
 
+const PLUGIN_NAME = "vite-plugin-file-bundler";
+
 export function vitePluginFileBundler(entries: Entry[]): Plugin {
+  const sourceFolder = basename(resolvePath());
+
   async function resolveFiles(
     config: ResolvedConfig,
     entry: Required<Entry>,
@@ -82,7 +87,6 @@ export function vitePluginFileBundler(entries: Entry[]): Plugin {
     for (const match of matches) {
       if (match.isDirectory()) {
         const entryFiles = await resolveFiles(config, entry);
-
         files.push(...entryFiles);
       } else if (match.isFile()) {
         if (match.name === entry.outfile) {
@@ -90,9 +94,13 @@ export function vitePluginFileBundler(entries: Entry[]): Plugin {
         }
 
         const name = match.relative().replace(/\.([^.]+)$/, "");
-        const folder =
-          entry.folders.find((f) => new RegExp(`^${f}/`).test(name)) || "";
-        const content = await fs.readFile(match.fullpath(), "utf8");
+
+        // prettier-ignore
+        const folder = entry.folders.find(
+          (f) => new RegExp(`^${f}/`).test(name)
+        ) || "";
+
+        const content = await fsx.readFile(match.fullpath(), "utf8");
 
         files.push({
           name,
@@ -112,6 +120,8 @@ export function vitePluginFileBundler(entries: Entry[]): Plugin {
   }
 
   async function generateFiles(config: ResolvedConfig) {
+    const filesGenerator = filesGeneratorFactory();
+
     for (const _entry of entries) {
       const entry: Required<Entry> = {
         pattern: "**/*.ts",
@@ -124,7 +134,7 @@ export function vitePluginFileBundler(entries: Entry[]): Plugin {
 
       const files = await resolveFiles(config, entry);
 
-      const template = await fs.readFile(resolvePath(entry.template), "utf8");
+      const template = await fsx.readFile(resolvePath(entry.template), "utf8");
 
       const folderMapper = (folder: string) => ({
         folder,
@@ -136,15 +146,23 @@ export function vitePluginFileBundler(entries: Entry[]): Plugin {
         folders: entry.folders.map(folderMapper),
       });
 
-      await renderToFile(resolvePath(entry.outfile), template, {
-        BANNER,
-        ...context,
+      await filesGenerator.generateFile(entry.outfile, {
+        template,
+        context: {
+          BANNER,
+          ...context,
+        },
       });
     }
+
+    await filesGenerator.persistGeneratedFiles(
+      join(sourceFolder, PLUGIN_NAME),
+      (f) => resolvePath(f).replace(resolvePath("..") + "/", ""),
+    );
   }
 
   return {
-    name: "vite-plugin-file-bundler",
+    name: PLUGIN_NAME,
     configResolved: generateFiles,
   };
 }

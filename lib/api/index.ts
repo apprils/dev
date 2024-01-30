@@ -8,7 +8,7 @@ import { parse } from "yaml";
 import { type BuildOptions, transform } from "esbuild";
 
 import { BANNER, render, renderToFile } from "../render";
-import { resolvePath, sanitizePath } from "../base";
+import { resolvePath, sanitizePath, filesGeneratorFactory } from "../base";
 import { extractTypedEndpoints } from "./ast";
 import { esbuilderFactory } from "./esbuilder";
 
@@ -124,6 +124,9 @@ some-route:
  *    files containing route definitions, resolved relative to apiDir
  * @param {object} [opts.templates={}] - custom templates
  */
+
+const PLUGIN_NAME = "vite-plugin-appril-api";
+
 export async function vitePluginApprilApi(opts: Options): Promise<Plugin> {
   const {
     esbuildConfig,
@@ -135,6 +138,8 @@ export async function vitePluginApprilApi(opts: Options): Promise<Plugin> {
 
   const sourceFolder = basename(resolvePath());
 
+  const filesGenerator = filesGeneratorFactory();
+
   const outDirSuffix = "client";
 
   let esbuilder: ReturnType<typeof esbuilderFactory>;
@@ -143,10 +148,10 @@ export async function vitePluginApprilApi(opts: Options): Promise<Plugin> {
 
   // ambient modules file.
   // do not use global import/export in module.d.tpl template!
-  const fetchDtsFile = resolvePath(apiDir, "_fetch.d.ts");
+  const fetchDtsFile = join(apiDir, "_fetch.d.ts");
 
   // regular index file with global export
-  const fetchIdxFile = resolvePath(apiDir, "_fetch.ts");
+  const fetchIdxFile = join(apiDir, "_fetch.ts");
 
   const virtualModules: {
     fetch: Record<string, FetchModule>;
@@ -199,7 +204,7 @@ export async function vitePluginApprilApi(opts: Options): Promise<Plugin> {
       name,
       importName: fetchModuleId.replace(/\W/g, "_"),
       watchFiles: [file],
-      code: await render(fetchMdlTpl, {
+      code: render(fetchMdlTpl, {
         apiDir,
         sourceFolder,
         fetchTypes,
@@ -289,17 +294,6 @@ export async function vitePluginApprilApi(opts: Options): Promise<Plugin> {
               };
             }
 
-            if (!(await fsx.pathExists(file))) {
-              const template = routeSetup?.template
-                ? await readTemplate(routeSetup?.template)
-                : templates.route;
-
-              await renderToFile(file, template, {
-                ...routeSetup,
-                ...routeMap[path],
-              });
-            }
-
             if (fetchModuleId) {
               watchMap.apiFiles[file] = async () => {
                 virtualModules.fetch[fetchModuleId] = await fetchModuleFactory({
@@ -315,8 +309,8 @@ export async function vitePluginApprilApi(opts: Options): Promise<Plugin> {
                   id: fetchModulePrefix,
                   name: "Not supposed to be imported!",
                   importName: "Not supposed to be imported!",
-                  watchFiles: [fetchDtsFile],
-                  code: await render(fetchIdxTpl, {
+                  watchFiles: [resolvePath(fetchDtsFile)],
+                  code: render(fetchIdxTpl, {
                     apiDir,
                     sourceFolder,
                     modules,
@@ -326,24 +320,44 @@ export async function vitePluginApprilApi(opts: Options): Promise<Plugin> {
                 // (re)generating fetch files when some api file updated
 
                 // generating file contaning ambient fetch modules
-                await renderToFile(fetchDtsFile, fetchDtsTpl, {
-                  BANNER,
-                  apiDir,
-                  sourceFolder,
-                  modules,
-                  defaultModuleId: fetchModulePrefix,
+                await filesGenerator.generateFile(fetchDtsFile, {
+                  template: fetchDtsTpl,
+                  context: {
+                    BANNER,
+                    apiDir,
+                    sourceFolder,
+                    modules,
+                    defaultModuleId: fetchModulePrefix,
+                  },
                 });
 
                 // generating {apiDir}/_fetch.ts for access from outside sourceFolder,
                 // eg. when need access to @admin fetch modules from inside @front sourceFolder
-                await renderToFile(fetchIdxFile, fetchIdxTpl, {
-                  BANNER,
-                  apiDir,
-                  sourceFolder,
-                  modules,
+                await filesGenerator.generateFile(fetchIdxFile, {
+                  template: fetchIdxTpl,
+                  context: {
+                    BANNER,
+                    apiDir,
+                    sourceFolder,
+                    modules,
+                  },
                 });
               };
             }
+
+            const template = routeSetup?.template
+              ? await readTemplate(routeSetup?.template)
+              : templates.route;
+
+            await renderToFile(
+              file,
+              template,
+              {
+                ...routeSetup,
+                ...routeMap[path],
+              },
+              { overwrite: false },
+            );
           }
 
           // (re)generating base files when some source file updated
@@ -359,11 +373,14 @@ export async function vitePluginApprilApi(opts: Options): Promise<Plugin> {
             ["_routes.ts", templates.routes, routesWithAlias],
             ["_urlmap.ts", templates.urlmap, routesNoAlias],
           ] as const) {
-            await renderToFile(resolvePath(apiDir, outFile), template, {
-              BANNER,
-              apiDir,
-              sourceFolder,
-              routes,
+            await filesGenerator.generateFile(join(apiDir, outFile), {
+              template,
+              context: {
+                BANNER,
+                apiDir,
+                sourceFolder,
+                routes,
+              },
             });
           }
         };
@@ -380,10 +397,15 @@ export async function vitePluginApprilApi(opts: Options): Promise<Plugin> {
         await handler();
       }
     }
+
+    await filesGenerator.persistGeneratedFiles(
+      join(sourceFolder, PLUGIN_NAME),
+      (f) => join(sourceFolder, f),
+    );
   }
 
   return {
-    name: "vite-plugin-appril-api",
+    name: PLUGIN_NAME,
 
     async buildStart() {
       await esbuilder?.build();
@@ -405,15 +427,15 @@ export async function vitePluginApprilApi(opts: Options): Promise<Plugin> {
     },
 
     async transform(src, id) {
-      if (id === fetchIdxFile) {
-        const hmrHandler = await render(fetchHmrTpl, {});
+      if (id === resolvePath(fetchIdxFile)) {
+        const hmrHandler = render(fetchHmrTpl, {});
         return {
           code: src + hmrHandler,
         };
       }
 
       if (virtualModules.fetch[id]) {
-        const hmrHandler = await render(fetchHmrTpl, virtualModules.fetch[id]);
+        const hmrHandler = render(fetchHmrTpl, virtualModules.fetch[id]);
         const { code } = await transform(src + hmrHandler, {
           loader: "ts",
         });

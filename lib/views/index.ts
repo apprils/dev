@@ -2,12 +2,12 @@ import { basename, join } from "path";
 import { readFile } from "fs/promises";
 
 import type { Plugin, ResolvedConfig } from "vite";
-import fsx from "fs-extra";
 import { parse, stringify } from "yaml";
 
 import type { View, ExportedView } from "./@types";
+
+import { resolvePath, sanitizePath, filesGeneratorFactory } from "../base";
 import { BANNER, renderToFile } from "../render";
-import { resolvePath, sanitizePath } from "../base";
 import { typedRoutes } from "./typed-routes";
 
 import viewTpl from "./templates/view.tpl";
@@ -81,6 +81,9 @@ some-view:
  * @param {string} [opts.apiDir="api"] - path to api folder
  * @param {object} [opts.templates={}] - custom templates
  */
+
+const PLUGIN_NAME = "vite-plugin-appril-views";
+
 export function vitePluginApprilViews(opts?: Options): Plugin {
   const {
     routesDir = "router",
@@ -91,6 +94,8 @@ export function vitePluginApprilViews(opts?: Options): Plugin {
   } = { ...opts };
 
   const sourceFolder = basename(resolvePath());
+
+  const filesGenerator = filesGeneratorFactory();
 
   const viewsFile = join(viewsDir, "_views.yml");
 
@@ -153,44 +158,53 @@ export function vitePluginApprilViews(opts?: Options): Plugin {
         envApi,
       };
 
-      const viewFile = resolvePath(viewsDir, view.file);
-
-      if (!(await fsx.pathExists(viewFile))) {
-        await renderToFile(viewFile, templates.view, {});
-      }
-
       const serialized = JSON.stringify({
         name: view.name,
         path: view.path,
       });
 
       views.push({ ...view, serialized });
+
+      await renderToFile(
+        resolvePath(viewsDir, view.file),
+        templates.view,
+        {},
+        { overwrite: false },
+      );
     }
 
     for (const [outfile, template] of [
-      [resolvePath(routesDir, "_routes.ts"), templates.routes],
-      [resolvePath(routesDir, "_urlmap.ts"), templates.urlmap],
+      ["_routes.ts", templates.routes],
+      ["_urlmap.ts", templates.urlmap],
     ]) {
-      await renderToFile(outfile, template, {
-        BANNER,
-        sourceFolder,
-        views,
-        viewsDir,
-        storesDir,
+      await filesGenerator.generateFile(join(routesDir, outfile), {
+        template,
+        context: {
+          BANNER,
+          sourceFolder,
+          views,
+          viewsDir,
+          storesDir,
+        },
       });
     }
 
-    await renderToFile(
-      resolvePath(routesDir, "_routes.d.ts"),
-      templates.typedRoutes,
-      { BANNER, routes: typedRoutes(views) },
-    );
+    await filesGenerator.generateFile(join(routesDir, "_routes.d.ts"), {
+      template: templates.typedRoutes,
+      context: {
+        BANNER,
+        routes: typedRoutes(views),
+      },
+    });
 
-    await renderToFile(resolvePath(storesDir, "env.ts"), templates.envStore, {
-      BANNER,
-      sourceFolder,
-      apiDir,
-      viewsWithEnvApi: views.filter((e) => e.envApi),
+    await filesGenerator.generateFile(join(storesDir, "env.ts"), {
+      template: templates.envStore,
+      context: {
+        BANNER,
+        sourceFolder,
+        apiDir,
+        viewsWithEnvApi: views.filter((e) => e.envApi),
+      },
     });
 
     {
@@ -204,18 +218,25 @@ export function vitePluginApprilViews(opts?: Options): Plugin {
         stringify(views.reduce(reducer, {})),
       ].join("\n");
 
-      await fsx.outputFile(
-        resolvePath(apiDir, "_000_env_routes.yml"),
+      await filesGenerator.generateFile(
+        join(apiDir, "_000_env_routes.yml"),
         content,
-        "utf8",
       );
     }
   }
 
-  return {
-    name: "vite-plugin-appril-views",
+  async function configResolved(config: ResolvedConfig) {
+    await generateFiles(config);
+    await filesGenerator.persistGeneratedFiles(
+      join(sourceFolder, PLUGIN_NAME),
+      (f) => join(sourceFolder, f),
+    );
+  }
 
-    configResolved: generateFiles,
+  return {
+    name: PLUGIN_NAME,
+
+    configResolved,
 
     configureServer(server) {
       // adding optedTemplates to watchlist

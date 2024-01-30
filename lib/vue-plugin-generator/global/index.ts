@@ -1,9 +1,10 @@
+import { basename, join } from "path";
 import { readFile } from "fs/promises";
 
 import type { Plugin, ResolvedConfig } from "vite";
 
-import { resolvePath } from "../../base";
-import { BANNER, renderToFile } from "../../render";
+import { resolvePath, filesGeneratorFactory } from "../../base";
+import { BANNER } from "../../render";
 
 import envTpl from "./templates/env.tpl";
 import indexTpl from "./templates/index.tpl";
@@ -30,12 +31,18 @@ type Options = {
 type TemplateName = keyof typeof defaultTemplates;
 type TemplateMap = Record<TemplateName, string>;
 
+const PLUGIN_NAME = "vite-plugin-vue-plugins-global";
+
 export default function globalPluginsGenerator(opts: Options): Plugin {
   const {
     plugins,
     outDir = "plugins/generated/global",
     templates: optedTemplates = {},
   } = { ...opts };
+
+  const sourceFolder = basename(resolvePath());
+
+  const filesGenerator = filesGeneratorFactory();
 
   async function generateFiles({ root }: ResolvedConfig) {
     // re-reading templates every time
@@ -76,17 +83,16 @@ export default function globalPluginsGenerator(opts: Options): Plugin {
         },
       );
 
-      await renderToFile(
-        resolvePath(outDir, pluginName + ".ts"),
-        templates.plugin,
-        {
+      await filesGenerator.generateFile(join(outDir, pluginName + ".ts"), {
+        template: templates.plugin,
+        context: {
           BANNER,
           path,
           pluginName,
           globalProperties: globalPropertiesNames,
           template: optedTemplates.plugin,
         },
-      );
+      });
 
       generatedPlugins.push({
         pluginName,
@@ -94,23 +100,37 @@ export default function globalPluginsGenerator(opts: Options): Plugin {
       });
     }
 
-    await renderToFile(resolvePath(outDir, "env.d.ts"), templates.env, {
-      BANNER,
-      generatedPlugins,
-      template: optedTemplates.env,
+    await filesGenerator.generateFile(join(outDir, "env.d.ts"), {
+      template: templates.env,
+      context: {
+        BANNER,
+        generatedPlugins,
+        template: optedTemplates.env,
+      },
     });
 
-    await renderToFile(resolvePath(outDir, "index.ts"), templates.index, {
-      BANNER,
-      generatedPlugins,
-      template: optedTemplates.index,
+    await filesGenerator.generateFile(join(outDir, "index.ts"), {
+      template: templates.index,
+      context: {
+        BANNER,
+        generatedPlugins,
+        template: optedTemplates.index,
+      },
     });
   }
 
-  return {
-    name: "vite-plugin-vue-plugins-global",
+  async function configResolved(config: ResolvedConfig) {
+    await generateFiles(config);
+    await filesGenerator.persistGeneratedFiles(
+      join(sourceFolder, PLUGIN_NAME),
+      (f) => join(sourceFolder, f),
+    );
+  }
 
-    configResolved: generateFiles,
+  return {
+    name: PLUGIN_NAME,
+
+    configResolved,
 
     configureServer(server) {
       // adding templates to watchlist
