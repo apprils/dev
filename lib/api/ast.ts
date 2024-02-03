@@ -19,9 +19,19 @@ type Entry = {
   bodyType: string;
 };
 
-const METHODS = ["get", "post", "put", "patch", "del"];
+const METHODS = ["get", "post", "put", "patch", "del"] as const;
+
+const HTTP_METHODS = {
+  get: "GET",
+  post: "POST",
+  put: "PUT",
+  patch: "PATCH",
+  del: "DELETE",
+} as const;
 
 const METHODS_REGEX = new RegExp(`\\b(${METHODS.join("|")})\\b`);
+
+type Method = (typeof METHODS)[number];
 
 export function extractTypedEndpoints(
   src: string,
@@ -50,7 +60,8 @@ export function extractTypedEndpoints(
   const typeAliasDeclarations = tsquery.match(ast, "TypeAliasDeclaration");
 
   const typeDeclarations = new Set<string>();
-  const endpoints: Record<string, Entry[]> = {};
+
+  const endpoints: Partial<Record<Method, Entry[]>> = {};
 
   for (const node of [...importDeclarations]) {
     let path = node.moduleSpecifier
@@ -80,7 +91,8 @@ export function extractTypedEndpoints(
   }
 
   for (const node of callExpressions) {
-    const [method] = node.expression.getText().match(METHODS_REGEX) || [];
+    const [method] = (node.expression.getText().match(METHODS_REGEX) ||
+      []) as Method[];
 
     if (!method || !METHODS.includes(method)) {
       continue;
@@ -110,7 +122,7 @@ export function extractTypedEndpoints(
       endpoints[method] = [];
     }
 
-    endpoints[method].push({
+    endpoints[method]?.push({
       method,
       args,
       bodyType: bodyType || "unknown",
@@ -119,10 +131,14 @@ export function extractTypedEndpoints(
 
   return {
     typeDeclarations: [...typeDeclarations],
-    endpoints: Object.entries(endpoints).map(([method, entries]) => ({
-      method,
-      entries,
-    })),
+    endpoints: Object.entries(endpoints).map(([method, entries]) => {
+      return {
+        method,
+        useMethod: method.replace(/^\w/, (m) => "use" + m.toUpperCase()),
+        httpMethod: HTTP_METHODS[method as Method],
+        entries,
+      };
+    }),
   };
 }
 

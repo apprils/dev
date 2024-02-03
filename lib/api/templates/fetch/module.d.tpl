@@ -23,3 +23,7 @@ export default {
 
 }
 
+declare module "{{fetchBaseModule}}" {
+{{fetchBaseModuleCode}}
+}
+

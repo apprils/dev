@@ -5,10 +5,20 @@ import {
   fetch,
 } from "@appril/more/fetch";
 
-import type { PathChunk } from "~/helpers/url";
-import { join, urlBuilder } from "~/helpers/url";
+import {
+  type UseFetchReturn,
+  type UseFetchOptions,
+  useFetch,
+} from "@vueuse/core";
+
+import {
+  type PathChunk,
+  join,
+  urlBuilder,
+} from "~/helpers/url";
 
 import { baseurl, apiurl } from "{{sourceFolder}}/config";
+import { useMethodArgsMapper } from "{{fetchBaseModule}}";
 
 {{#fetchTypes}}
 {{.}}
@@ -28,9 +38,24 @@ let apiFactory = function apiFactory(api: FetchMapper) {
     {{.}},
     {{/args}}
   ): Promise<{{bodyType}}>;
+  function {{useMethod}}(
+    {{#args}}
+    {{.}},
+    {{/args}}
+  ): UseFetchReturn<{{bodyType}}>;
+  function {{useMethod}}(
+    {{#args}}
+    {{.}},
+    {{/args}}
+    useFetchOptions?: UseFetchOptions,
+  ): UseFetchReturn<{{bodyType}}>;
   {{/entries}}
   function {{method}}(...args: unknown[]): Promise<unknown> {
     return api.{{method}}(...args)
+  }
+  function {{useMethod}}(...args: unknown[]): Promise<unknown> {
+    const [ apiArgs, useFetchOptions ] = useMethodArgsMapper(args)
+    return useFetch(urlBuilder(base, ...apiArgs), { method: "{{httpMethod}}" }, useFetchOptions)
   }
   {{/fetchEndpoints}}
 
@@ -38,6 +63,7 @@ let apiFactory = function apiFactory(api: FetchMapper) {
   return {
     {{#fetchEndpoints}}
     {{method}},
+    {{useMethod}},
     {{/fetchEndpoints}}
   }
   {{/fetchEndpoints.length}}

@@ -18,6 +18,7 @@ import urlmapTpl from "./templates/urlmap.tpl";
 
 import fetchMdlTpl from "./templates/fetch/module.tpl";
 import fetchDtsTpl from "./templates/fetch/module.d.tpl";
+import fetchBaseTpl from "./templates/fetch/base.tpl";
 import fetchIdxTpl from "./templates/fetch/index.tpl";
 import fetchHmrTpl from "./templates/fetch/hmr.tpl";
 
@@ -145,6 +146,7 @@ export async function vitePluginApprilApi(opts: Options): Promise<Plugin> {
   let esbuilder: ReturnType<typeof esbuilderFactory>;
 
   const fetchModulePrefix = `${opts.fetchModulePrefix?.trim() || "@fetch"}`;
+  const fetchBaseModule = `${fetchModulePrefix}::base`;
 
   // ambient modules file.
   // do not use global import/export in module.d.tpl template!
@@ -209,6 +211,7 @@ export async function vitePluginApprilApi(opts: Options): Promise<Plugin> {
         sourceFolder,
         fetchTypes,
         fetchEndpoints,
+        fetchBaseModule,
         ...route,
       }),
       hmrUpdate: `
@@ -302,8 +305,21 @@ export async function vitePluginApprilApi(opts: Options): Promise<Plugin> {
                 });
 
                 const modules = Object.values(virtualModules.fetch).filter(
-                  (e) => e.id !== fetchModulePrefix,
+                  (e) => ![fetchModulePrefix, fetchBaseModule].includes(e.id),
                 );
+
+                const fetchBaseModuleCode = render(fetchBaseTpl, {
+                  apiDir,
+                  sourceFolder,
+                });
+
+                virtualModules.fetch[fetchBaseModule] = {
+                  id: fetchBaseModule,
+                  name: fetchBaseModule,
+                  importName: fetchBaseModule,
+                  watchFiles: [resolvePath(fetchDtsFile)],
+                  code: fetchBaseModuleCode,
+                };
 
                 virtualModules.fetch[fetchModulePrefix] = {
                   id: fetchModulePrefix,
@@ -319,7 +335,7 @@ export async function vitePluginApprilApi(opts: Options): Promise<Plugin> {
 
                 // (re)generating fetch files when some api file updated
 
-                // generating file contaning ambient fetch modules
+                // generating file containing ambient fetch modules
                 await filesGenerator.generateFile(fetchDtsFile, {
                   template: fetchDtsTpl,
                   context: {
@@ -328,6 +344,8 @@ export async function vitePluginApprilApi(opts: Options): Promise<Plugin> {
                     sourceFolder,
                     modules,
                     defaultModuleId: fetchModulePrefix,
+                    fetchBaseModule,
+                    fetchBaseModuleCode,
                   },
                 });
 
