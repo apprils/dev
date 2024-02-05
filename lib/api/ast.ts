@@ -8,12 +8,14 @@ import {
   type Expression,
   type ImportSpecifier,
   type ImportDeclaration,
-  SyntaxKind,
+  type FunctionExpression,
+  type ArrowFunction,
   isArrowFunction,
   isFunctionExpression,
+  isStringLiteral,
 } from "typescript";
 
-type Entry = {
+type MethodOverload = {
   method: string;
   args: string[];
   bodyType: string;
@@ -41,7 +43,7 @@ export function extractTypedEndpoints(
   },
 ): {
   typeDeclarations: string[];
-  endpoints: { method: string; entries: Entry[] }[];
+  endpoints: { method: string; overloads: MethodOverload[] }[];
 } {
   const ast = tsquery.ast(src);
 
@@ -61,7 +63,7 @@ export function extractTypedEndpoints(
 
   const typeDeclarations = new Set<string>();
 
-  const endpoints: Partial<Record<Method, Entry[]>> = {};
+  const endpoints: Partial<Record<Method, MethodOverload[]>> = {};
 
   for (const node of [...importDeclarations]) {
     let path = node.moduleSpecifier
@@ -98,7 +100,11 @@ export function extractTypedEndpoints(
       continue;
     }
 
-    const args = argumentsMapper(node.arguments?.[0]);
+    const handler = node.arguments.find(
+      (e) => isArrowFunction(e) || isFunctionExpression(e),
+    ) as ArrowFunction | FunctionExpression;
+
+    const args = argumentsMapper(node.arguments?.[0], handler);
 
     let bodyType;
 
@@ -106,16 +112,10 @@ export function extractTypedEndpoints(
       // BodyT provided as TypeArgument, like
       // get<StateT, ContextT, BodyT>(...)
       bodyType = node.typeArguments[2].getText();
-    } else {
-      const handler = node.arguments.find(
-        (e) => isArrowFunction(e) || isFunctionExpression(e),
-      );
-
-      if (handler) {
-        // provided as explicit return type
-        // get(async (ctx): BodyT => {...})
-        bodyType = getReturnType(handler);
-      }
+    } else if (handler) {
+      // provided as explicit return type
+      // get(async (ctx): BodyT => {...})
+      bodyType = getReturnType(handler);
     }
 
     if (!endpoints[method]) {
@@ -131,36 +131,71 @@ export function extractTypedEndpoints(
 
   return {
     typeDeclarations: [...typeDeclarations],
-    endpoints: Object.entries(endpoints).map(([method, entries]) => {
+    endpoints: Object.entries(endpoints).map(([method, overloads]) => {
       return {
         method,
         useMethod: method.replace(/^\w/, (m) => "use" + m.toUpperCase()),
         httpMethod: HTTP_METHODS[method as Method],
-        entries,
+        overloads,
       };
     }),
   };
 }
 
-function argumentsMapper(exp: Expression) {
-  const args = ["data?: Record<string, any>"];
+function argumentsMapper(
+  exp: Expression,
+  handler: ArrowFunction | FunctionExpression | undefined,
+) {
+  // prettier-ignore
+  const pathParams = isStringLiteral(exp)
+    ? exp.getText().replace(/^\W|\W$/g, "") // removing quotes
+    : null;
 
-  if (!exp || exp.kind !== SyntaxKind.StringLiteral) {
+  const wildcardParams = pathParams?.includes("*");
+  const optionalParams = pathParams?.includes("?");
+
+  const payloadParam = handler?.parameters[1];
+  let payloadType = "Record<string, any>";
+  let payloadRequired = false;
+
+  if (payloadParam) {
+    const [typeExp] = tsquery
+      .match(payloadParam, "TypeReference,TypeLiteral,AnyKeyword")
+      .filter((e) => e.parent === payloadParam);
+
+    if (typeExp) {
+      payloadType = typeExp.getText();
+
+      if (
+        !tsquery
+          .match(payloadParam, "QuestionToken")
+          .filter((e) => e.parent === payloadParam).length
+      ) {
+        payloadRequired = true;
+      }
+
+      if (wildcardParams || optionalParams) {
+        payloadRequired = false;
+      }
+    }
+  }
+
+  const args = [`payload${payloadRequired ? "" : "?"}: ${payloadType}`];
+
+  if (!pathParams) {
     return args;
   }
 
-  const text = exp.getText().replace(/^\W|\W$/g, ""); // removing quotes
+  if (wildcardParams) {
+    return ["params?: (string|number)[]", ...args];
+  }
 
-  if (/\*/.test(text)) {
-    // accept any number of args
-    args[0] = "...args: (string|number|Record<string, any>)[]";
-  } else {
-    for (const [i, arg] of text.split("/").reverse().entries()) {
-      if (/^:/.test(arg)) {
-        args.unshift(`${arg.replace(/\W/g, "_")}0${i}: string|number`);
-      } else {
-        args.unshift(`literal0${i}: "${arg}"`);
-      }
+  for (const [i, arg] of pathParams.split("/").reverse().entries()) {
+    const suffix = [0, i, arg.endsWith("?") ? "?" : ""].join("");
+    if (/^:/.test(arg)) {
+      args.unshift(`${arg.replace(/\W/g, "_")}${suffix}: string|number`);
+    } else {
+      args.unshift(`literal${suffix}: "${arg}"`);
     }
   }
 
@@ -168,20 +203,26 @@ function argumentsMapper(exp: Expression) {
 }
 
 function getReturnType(node: Expression | Node): string | undefined {
-  const [typeReference] = tsquery
+  const [typeExp] = tsquery
     .match(node, "TypeReference,TypeLiteral,AnyKeyword")
     .filter((e) => e.parent === node);
 
-  if (typeReference) {
-    if (/^Promise(\s+)?</.test(typeReference.getText())) {
-      const [wrappedType] = tsquery.match(
-        typeReference,
-        "TypeReference:first-child,TypeLiteral:first-child,AnyKeyword:first-child",
-      );
-
-      return wrappedType?.getText();
-    }
-
-    return typeReference.getText();
+  if (!typeExp) {
+    return;
   }
+
+  if (/^Promise(\s+)?</.test(typeExp.getText())) {
+    const [wrappedType] = tsquery.match(
+      typeExp,
+      [
+        "TypeReference:first-child",
+        "TypeLiteral:first-child",
+        "AnyKeyword:first-child",
+      ].join(","),
+    );
+
+    return wrappedType?.getText();
+  }
+
+  return typeExp.getText();
 }

@@ -32,7 +32,7 @@ const base = join(baseurl, apiurl, path)
 let apiFactory = function apiFactory(api: FetchMapper) {
   {{#fetchEndpoints}}
 
-  {{#entries}}
+  {{#overloads}}
   function {{method}}(
     {{#args}}
     {{.}},
@@ -49,7 +49,7 @@ let apiFactory = function apiFactory(api: FetchMapper) {
     {{/args}}
     useFetchOptions?: UseFetchOptions,
   ): UseFetchReturn<{{bodyType}}>;
-  {{/entries}}
+  {{/overloads}}
   function {{method}}(...args: unknown[]): Promise<unknown> {
     return api.{{method}}(...args)
   }
