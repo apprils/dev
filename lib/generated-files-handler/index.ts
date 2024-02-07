@@ -46,7 +46,7 @@ export async function generatedFilesHandler(...args: any[]): Promise<Plugin> {
   }
 
   return {
-    name: "vite-plugin-cfmt-ignore-files",
+    name: "generated-files-handler",
     async configureServer() {
       // somehow server.watcher does not work with arbitrary folders
       // that initially are empty; so using bare chokidar watcher
