@@ -54,38 +54,25 @@ export function esbuilderFactory(
 
         if (!payloadParams.length) {
           return {
-            loader: "js",
-            contents: "module.exports = []",
+            loader: "ts",
+            contents: "export default []",
           };
         }
 
-        const typeDeclarationsMapper = async ({
+        const typeDeclarationsMapper = async function ({
           text,
-          path,
-        }: TypeDeclaration) => {
-          if (!path) {
+          importDeclaration,
+        }: TypeDeclaration) {
+          if (!importDeclaration) {
             return text;
           }
 
-          if (filter.test(path)) {
-            return "";
-          }
+          const file = await tryResolveFile(
+            importDeclaration.path,
+            assets.alias,
+          );
 
-          const alias = assets.alias.find((e) => {
-            return typeof e.find === "string"
-              ? path.startsWith(e.find + "/")
-              : e.find.test(path);
-          });
-
-          const resolvedPath = alias
-            ? path.replace(alias.find, alias.replacement)
-            : path;
-
-          if (await fsx.pathExists(resolvedPath + ".ts")) {
-            return fsx.readFile(resolvedPath + ".ts", "utf8");
-          }
-
-          return fsx.readFile(resolvedPath + "/index.ts", "utf8");
+          return file ? fsx.readFile(file, "utf8") : text;
         };
 
         const sourceText = render(schemaSourceTpl, {
@@ -96,9 +83,18 @@ export function esbuilderFactory(
           payloadParams,
         });
 
+        if (path.endsWith("-source")) {
+          return {
+            loader: "ts",
+            resolveDir: resolvePath(),
+            contents: sourceText,
+          };
+        }
+
         const { getZodSchemasFile, errors } = tsToZod({
           sourceText,
-          nameFilter: (id) => payloadParams.some((e) => e.id === id),
+          // prettier-ignore
+          nameFilter: (id) => payloadParams.some((e) => e.id === id || e.type === id),
           getSchemaName: (e) => e,
         });
 
@@ -108,7 +104,7 @@ export function esbuilderFactory(
           contents: render(schemaModuleTpl, {
             BANNER,
             typeDeclarations,
-            tsToZod: errors.length ? "" : getZodSchemasFile(path),
+            tsToZod: errors.length ? "" : getZodSchemasFile(path + "-source"),
             payloadParams,
             errors,
           }),
@@ -176,4 +172,25 @@ export function esbuilderFactory(
 
     watch,
   };
+}
+
+async function tryResolveFile(
+  path: string,
+  alias: ResolvedConfig["resolve"]["alias"],
+) {
+  const matchedAlias = alias.find((e) => {
+    return typeof e.find === "string"
+      ? path.startsWith(e.find + "/")
+      : e.find.test(path);
+  });
+
+  const resolvedPath = matchedAlias
+    ? path.replace(matchedAlias.find, matchedAlias.replacement)
+    : path;
+
+  for (const ext of [".ts", "/index.ts"]) {
+    if (await fsx.pathExists(resolvedPath + ext)) {
+      return resolvedPath + ext;
+    }
+  }
 }
