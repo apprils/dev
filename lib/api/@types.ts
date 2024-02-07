@@ -32,7 +32,18 @@ export type Endpoint = {
 
 export type TypeDeclaration = {
   text: string;
-  path?: string;
+  importDeclaration?: {
+    name: string;
+    path: string;
+  };
+  typeAliasDeclaration?: {
+    name: string;
+    text: string;
+  };
+  interfaceDeclaration?: {
+    name: string;
+    text: string;
+  };
 }
 
 export type Route = {

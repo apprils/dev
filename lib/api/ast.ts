@@ -10,6 +10,8 @@ import {
   type ImportDeclaration,
   type FunctionExpression,
   type ArrowFunction,
+  type TypeAliasDeclaration,
+  type InterfaceDeclaration,
   isArrowFunction,
   isFunctionExpression,
   isStringLiteral,
@@ -37,9 +39,11 @@ const METHODS_REGEX = new RegExp(`\\b(${METHODS.join("|")})\\b`);
 
 const PATH_PARAMS_REPLACE_MAP: Record<string, string> = {
   $: "$",
-  "/": "$",
-  "?": "$__OP",
-  "*": "$__WP",
+  ":": "_$s_", // start
+  "/": "_$d_", // delimiter
+  "-": "_$h_", // hyphen
+  "?": "_$o_", // optional
+  "*": "_$w_", // wildcard
 };
 
 export function extractTypedEndpoints(
@@ -65,11 +69,17 @@ export function extractTypedEndpoints(
     "ImportDeclaration",
   );
 
-  const interfaceDeclarations = tsquery.match(ast, "InterfaceDeclaration");
+  const interfaceDeclarations: InterfaceDeclaration[] = tsquery.match(
+    ast,
+    "InterfaceDeclaration",
+  );
 
-  const typeAliasDeclarations = tsquery.match(ast, "TypeAliasDeclaration");
+  const typeAliasDeclarations: TypeAliasDeclaration[] = tsquery.match(
+    ast,
+    "TypeAliasDeclaration",
+  );
 
-  const typeDeclarations: Record<string, TypeDeclaration> = {};
+  const typeDeclarationsMap: Record<string, TypeDeclaration> = {};
 
   const endpoints: Partial<Record<Method, MethodOverload[]>> = {};
 
@@ -88,20 +98,52 @@ export function extractTypedEndpoints(
       node,
       "ImportSpecifier",
     ) as ImportSpecifier[]) {
+      const name = spec.getText();
+      let text: string;
       if (node.importClause?.isTypeOnly) {
-        const text = `import type { ${spec.getText()} } from "${path}";`;
-        typeDeclarations[text] = { text, path };
+        text = `import type { ${name} } from "${path}";`;
       } else if (spec.isTypeOnly) {
-        const text = `import { ${spec.getText()} } from "${path}";`;
-        typeDeclarations[text] = { text, path };
+        text = `import { ${name} } from "${path}";`;
+      } else {
+        continue;
       }
+      typeDeclarationsMap[text] = { text, importDeclaration: { name, path } };
     }
   }
 
-  for (const node of [...interfaceDeclarations, ...typeAliasDeclarations]) {
+  for (const node of interfaceDeclarations) {
+    const props = tsquery
+      .match(node, "PropertySignature")
+      .filter((e) => e.parent === node);
+
     const text = node.getText();
-    typeDeclarations[text] = { text };
+
+    typeDeclarationsMap[text] = {
+      text,
+      interfaceDeclaration: {
+        name: node.name.getText(),
+        text: `{ ${props.map((e) => e.getText()).join("\n")} }`,
+      },
+    };
   }
+
+  for (const node of typeAliasDeclarations) {
+    const props = tsquery
+      .match(node, "TypeReference,IntersectionType")
+      .filter((e) => e.parent === node);
+
+    const text = node.getText();
+
+    typeDeclarationsMap[text] = {
+      text,
+      typeAliasDeclaration: {
+        name: node.name.getText(),
+        text: props.map((e) => e.getText()).join("\n"),
+      },
+    };
+  }
+
+  const typeDeclarations = Object.values(typeDeclarationsMap);
 
   for (const node of callExpressions) {
     const [method] = (node.expression.getText().match(METHODS_REGEX) ||
@@ -115,6 +157,11 @@ export function extractTypedEndpoints(
       ? node.arguments?.[0].getText().replace(/^\W|\W$/g, "") // removing quotes
       : null;
 
+    const pathParamsId = pathParams?.replace(
+      /\W/,
+      (s) => PATH_PARAMS_REPLACE_MAP[s] || "_",
+    );
+
     const handler = node.arguments.find(
       (e) => isArrowFunction(e) || isFunctionExpression(e),
     ) as ArrowFunction | FunctionExpression;
@@ -125,9 +172,7 @@ export function extractTypedEndpoints(
     if (payloadParam) {
       payloadParams.push({
         ...payloadParam,
-        id: [method, pathParams || "", "$Schema"]
-          .join("_")
-          .replace(/\W/, (s) => PATH_PARAMS_REPLACE_MAP[s] || "_"),
+        id: `__$${method}_${pathParamsId || ""}__$schema`,
         method,
         params: pathParams || "",
       });
@@ -165,7 +210,7 @@ export function extractTypedEndpoints(
   ][];
 
   return {
-    typeDeclarations: Object.values(typeDeclarations),
+    typeDeclarations,
     payloadParams,
     endpoints: endpointsEntries.map(([method, overloads]): Endpoint => {
       return {
