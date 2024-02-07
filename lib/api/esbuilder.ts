@@ -1,20 +1,117 @@
 import { createServer } from "http";
-import { join } from "path";
+import { dirname, join } from "path";
 
-import { type BuildOptions, type Plugin, context, build } from "esbuild";
 import type Koa from "koa";
+import { type ResolvedConfig } from "vite";
+import { type BuildOptions, type Plugin, context, build } from "esbuild";
+import { generate as tsToZod } from "ts-to-zod";
+import fsx from "fs-extra";
+
+import type { TypeDeclaration } from "./@types";
+import { resolvePath } from "../base";
+import { BANNER, render } from "../render";
+import { extractTypedEndpoints } from "./ast";
+
+import schemaSourceTpl from "./templates/schema/source.tpl";
+import schemaModuleTpl from "./templates/schema/module.tpl";
 
 export function esbuilderFactory(
   config: BuildOptions,
-  opt: {
+  assets: {
+    sourceFolder: string;
     apiDir: string;
     outDir: string;
+    alias: ResolvedConfig["resolve"]["alias"];
     flushPatterns?: RegExp[];
   },
 ) {
-  const { apiDir, outDir } = opt;
+  const { sourceFolder, apiDir, outDir } = assets;
 
-  const setupWatcher = async () => {
+  const schemaValidator: Plugin = {
+    name: "schemaValidator",
+    setup(build) {
+      const filter = /@schemaValidator:(.+)/;
+      const namespace = "@appril";
+
+      build.onResolve({ filter }, ({ path }) => {
+        return {
+          path,
+          namespace,
+        };
+      });
+
+      build.onLoad({ filter: /.*/, namespace }, async ({ path }) => {
+        const file = resolvePath(path.replace(filter, "$1"));
+        const fileContent = await fsx.readFile(file, "utf8");
+
+        // prettier-ignore
+        const {
+          typeDeclarations,
+          payloadParams,
+        } = extractTypedEndpoints(fileContent, {
+          root: sourceFolder,
+          base: dirname(file.replace(resolvePath(), "")),
+        });
+
+        const typeDeclarationsMapper = async ({
+          text,
+          path,
+        }: TypeDeclaration) => {
+          if (!path) {
+            return text;
+          }
+
+          if (filter.test(path)) {
+            return "";
+          }
+
+          const alias = assets.alias.find((e) => {
+            return typeof e.find === "string"
+              ? path.startsWith(e.find + "/")
+              : e.find.test(path);
+          });
+
+          const resolvedPath = alias
+            ? path.replace(alias.find, alias.replacement)
+            : path;
+
+          if (await fsx.pathExists(resolvedPath + ".ts")) {
+            return fsx.readFile(resolvedPath + ".ts");
+          }
+
+          return fsx.readFile(resolvedPath + "/index.ts");
+        };
+
+        const sourceText = render(schemaSourceTpl, {
+          fileContent,
+          typeDeclarations: await Promise.all(
+            typeDeclarations.map(typeDeclarationsMapper),
+          ),
+          payloadParams,
+        });
+
+        const { getZodSchemasFile, errors } = tsToZod({
+          sourceText,
+          nameFilter: (id) => payloadParams.some((e) => e.id === id),
+          getSchemaName: (e) => e,
+        });
+
+        return {
+          loader: "ts",
+          resolveDir: resolvePath(),
+          contents: render(schemaModuleTpl, {
+            BANNER,
+            typeDeclarations,
+            tsToZod: errors.length ? "" : getZodSchemasFile(path),
+            payloadParams,
+            errors,
+          }),
+        };
+      });
+    },
+  };
+
+  const watch = async () => {
     const outfile = join(outDir, "dev.js");
 
     const server = createServer((req, res) => callback?.(req, res));
@@ -22,9 +119,12 @@ export function esbuilderFactory(
     let callback: ReturnType<InstanceType<typeof Koa>["callback"]>;
 
     const hmrHandler: Plugin = {
-      name: "hmr-handler",
+      name: "hmrHandler",
       setup(build) {
-        const flushPatterns = [/@appril\/core/, ...(opt.flushPatterns || [])];
+        const flushPatterns = [
+          /@appril\/core/,
+          ...(assets.flushPatterns || []),
+        ];
 
         const flushFilter = (id: string) => {
           return id === outfile || flushPatterns.some((e) => e.test(id));
@@ -50,8 +150,8 @@ export function esbuilderFactory(
       logLevel: "info",
       ...config,
       bundle: true,
-      entryPoints: [join(apiDir, "_server_watch.ts")],
-      plugins: [...(config.plugins || []), hmrHandler],
+      entryPoints: [join(sourceFolder, apiDir, "_server_watch.ts")],
+      plugins: [...(config.plugins || []), schemaValidator, hmrHandler],
       outfile,
     });
 
@@ -63,10 +163,11 @@ export function esbuilderFactory(
       build({
         ...config,
         bundle: true,
-        entryPoints: [join(apiDir, "_server.ts")],
+        entryPoints: [join(sourceFolder, apiDir, "_server.ts")],
+        plugins: [...(config.plugins || []), schemaValidator],
         outfile: join(outDir, "index.js"),
       }),
 
-    watch: setupWatcher,
+    watch,
   };
 }

@@ -1,7 +1,12 @@
 {{BANNER}}
 
+/// <reference path="./_routes.d.ts" />
+
 {{#routes}}
 import {{importName}} from "{{sourceFolder}}/{{importPath}}";
+{{#schemaModuleId}}
+import {{importName}}_schema from "{{schemaModuleId}}";
+{{/schemaModuleId}}
 {{/routes}}
 
 type Meta = Record<string, any>
@@ -13,7 +18,12 @@ export default {
     path: "{{path}}",
     file: "{{file}}",
     meta: {{meta}} as Meta,
-    spec: {{importName}} as [],
+    spec: [
+      {{#schemaModuleId}}
+      ...{{importName}}_schema,
+      {{/schemaModuleId}}
+      ...{{importName}},
+    ] as [],
   },
 {{/routes}}
 }

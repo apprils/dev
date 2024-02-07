@@ -20,9 +20,9 @@ import {
 import { baseurl, apiurl } from "{{sourceFolder}}/config";
 import { useMethodArgsMapper } from "{{fetchBaseModule}}";
 
-{{#fetchTypes}}
-{{.}}
-{{/fetchTypes}}
+{{#typeDeclarations}}
+{{text}}
+{{/typeDeclarations}}
 
 let name = "{{name}}"
 let path = "{{path}}"
@@ -30,23 +30,23 @@ let path = "{{path}}"
 const base = join(baseurl, apiurl, path)
 
 let apiFactory = function apiFactory(api: FetchMapper) {
-  {{#fetchEndpoints}}
+  {{#endpoints}}
 
   {{#overloads}}
   function {{method}}(
-    {{#args}}
+    {{#renderedParams}}
     {{.}},
-    {{/args}}
+    {{/renderedParams}}
   ): Promise<{{bodyType}}>;
   function {{useMethod}}(
-    {{#args}}
+    {{#renderedParams}}
     {{.}},
-    {{/args}}
+    {{/renderedParams}}
   ): UseFetchReturn<{{bodyType}}>;
   function {{useMethod}}(
-    {{#args}}
+    {{#renderedParams}}
     {{.}},
-    {{/args}}
+    {{/renderedParams}}
     useFetchOptions?: UseFetchOptions,
   ): UseFetchReturn<{{bodyType}}>;
   {{/overloads}}
@@ -57,20 +57,20 @@ let apiFactory = function apiFactory(api: FetchMapper) {
     const [ apiArgs, useFetchOptions ] = useMethodArgsMapper(args)
     return useFetch(urlBuilder(base, ...apiArgs), { method: "{{httpMethod}}" }, useFetchOptions)
   }
-  {{/fetchEndpoints}}
+  {{/endpoints}}
 
-  {{#fetchEndpoints.length}}
+  {{#endpoints.length}}
   return {
-    {{#fetchEndpoints}}
+    {{#endpoints}}
     {{method}},
     {{useMethod}},
-    {{/fetchEndpoints}}
+    {{/endpoints}}
   }
-  {{/fetchEndpoints.length}}
+  {{/endpoints.length}}
 
-  {{^fetchEndpoints.length}}
+  {{^endpoints.length}}
   return api
-  {{/fetchEndpoints.length}}
+  {{/endpoints.length}}
 
 }
 

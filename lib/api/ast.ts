@@ -15,13 +15,15 @@ import {
   isStringLiteral,
 } from "typescript";
 
-type MethodOverload = {
-  method: string;
-  args: string[];
-  bodyType: string;
-};
-
-const METHODS = ["get", "post", "put", "patch", "del"] as const;
+import {
+  type Method,
+  type MethodOverloadParam,
+  type MethodOverload,
+  type PayloadParam,
+  type Endpoint,
+  type TypeDeclaration,
+  METHODS,
+} from "./@types";
 
 const HTTP_METHODS = {
   get: "GET",
@@ -33,7 +35,12 @@ const HTTP_METHODS = {
 
 const METHODS_REGEX = new RegExp(`\\b(${METHODS.join("|")})\\b`);
 
-type Method = (typeof METHODS)[number];
+const PATH_PARAMS_REPLACE_MAP: Record<string, string> = {
+  $: "$",
+  "/": "$",
+  "?": "$__OP",
+  "*": "$__WP",
+};
 
 export function extractTypedEndpoints(
   src: string,
@@ -42,8 +49,9 @@ export function extractTypedEndpoints(
     base: string;
   },
 ): {
-  typeDeclarations: string[];
-  endpoints: { method: string; overloads: MethodOverload[] }[];
+  typeDeclarations: TypeDeclaration[];
+  endpoints: Endpoint[];
+  payloadParams: PayloadParam[];
 } {
   const ast = tsquery.ast(src);
 
@@ -61,9 +69,11 @@ export function extractTypedEndpoints(
 
   const typeAliasDeclarations = tsquery.match(ast, "TypeAliasDeclaration");
 
-  const typeDeclarations = new Set<string>();
+  const typeDeclarations: Record<string, TypeDeclaration> = {};
 
   const endpoints: Partial<Record<Method, MethodOverload[]>> = {};
+
+  const payloadParams: PayloadParam[] = [];
 
   for (const node of [...importDeclarations]) {
     let path = node.moduleSpecifier
@@ -79,17 +89,18 @@ export function extractTypedEndpoints(
       "ImportSpecifier",
     ) as ImportSpecifier[]) {
       if (node.importClause?.isTypeOnly) {
-        typeDeclarations.add(
-          `import type { ${spec.getText()} } from "${path}";`,
-        );
+        const text = `import type { ${spec.getText()} } from "${path}";`;
+        typeDeclarations[text] = { text, path };
       } else if (spec.isTypeOnly) {
-        typeDeclarations.add(`import { ${spec.getText()} } from "${path}";`);
+        const text = `import { ${spec.getText()} } from "${path}";`;
+        typeDeclarations[text] = { text, path };
       }
     }
   }
 
   for (const node of [...interfaceDeclarations, ...typeAliasDeclarations]) {
-    typeDeclarations.add(node.getText());
+    const text = node.getText();
+    typeDeclarations[text] = { text };
   }
 
   for (const node of callExpressions) {
@@ -100,11 +111,27 @@ export function extractTypedEndpoints(
       continue;
     }
 
+    const pathParams = isStringLiteral(node.arguments?.[0])
+      ? node.arguments?.[0].getText().replace(/^\W|\W$/g, "") // removing quotes
+      : null;
+
     const handler = node.arguments.find(
       (e) => isArrowFunction(e) || isFunctionExpression(e),
     ) as ArrowFunction | FunctionExpression;
 
-    const args = argumentsMapper(node.arguments?.[0], handler);
+    const params = argumentsMapper(pathParams, handler);
+    const payloadParam = params.find((e) => e.scope === "explicitPayload");
+
+    if (payloadParam) {
+      payloadParams.push({
+        ...payloadParam,
+        id: [method, pathParams || "", "$Schema"]
+          .join("_")
+          .replace(/\W/, (s) => PATH_PARAMS_REPLACE_MAP[s] || "_"),
+        method,
+        params: pathParams || "",
+      });
+    }
 
     let bodyType;
 
@@ -124,14 +151,23 @@ export function extractTypedEndpoints(
 
     endpoints[method]?.push({
       method,
-      args,
+      params,
+      renderedParams: params.map(
+        (e) => `${e.name}${e.optional ? "?" : ""}: ${e.type}`,
+      ),
       bodyType: bodyType || "unknown",
     });
   }
 
+  const endpointsEntries = Object.entries(endpoints) as [
+    m: Method,
+    o: MethodOverload[],
+  ][];
+
   return {
-    typeDeclarations: [...typeDeclarations],
-    endpoints: Object.entries(endpoints).map(([method, overloads]) => {
+    typeDeclarations: Object.values(typeDeclarations),
+    payloadParams,
+    endpoints: endpointsEntries.map(([method, overloads]): Endpoint => {
       return {
         method,
         useMethod: method.replace(/^\w/, (m) => "use" + m.toUpperCase()),
@@ -143,20 +179,16 @@ export function extractTypedEndpoints(
 }
 
 function argumentsMapper(
-  exp: Expression,
+  pathParams: string | null,
   handler: ArrowFunction | FunctionExpression | undefined,
-) {
-  // prettier-ignore
-  const pathParams = isStringLiteral(exp)
-    ? exp.getText().replace(/^\W|\W$/g, "") // removing quotes
-    : null;
-
+): MethodOverloadParam[] {
   const wildcardParams = pathParams?.includes("*");
   const optionalParams = pathParams?.includes("?");
 
+  let explicitPayload: string | undefined;
+  let optionalPayload = true;
+
   const payloadParam = handler?.parameters[1];
-  let payloadType = "Record<string, any>";
-  let payloadRequired = false;
 
   if (payloadParam) {
     const [typeExp] = tsquery
@@ -164,42 +196,60 @@ function argumentsMapper(
       .filter((e) => e.parent === payloadParam);
 
     if (typeExp) {
-      payloadType = typeExp.getText();
+      explicitPayload = typeExp.getText();
 
       if (
         !tsquery
           .match(payloadParam, "QuestionToken")
           .filter((e) => e.parent === payloadParam).length
       ) {
-        payloadRequired = true;
+        optionalPayload = false;
       }
 
       if (wildcardParams || optionalParams) {
-        payloadRequired = false;
+        optionalPayload = true;
       }
     }
   }
 
-  const args = [`payload${payloadRequired ? "" : "?"}: ${payloadType}`];
+  const params: MethodOverloadParam[] = [
+    {
+      scope: explicitPayload ? "explicitPayload" : "payload",
+      name: "payload",
+      optional: optionalPayload,
+      type: explicitPayload || "Record<string, any>",
+    } as const,
+  ];
 
   if (!pathParams) {
-    return args;
+    return params;
   }
 
   if (wildcardParams) {
-    return ["params?: (string|number)[]", ...args];
+    return [
+      {
+        scope: "params",
+        name: "params",
+        type: "(string|number)[]",
+        optional: true,
+      },
+      ...params,
+    ];
   }
 
-  for (const [i, arg] of pathParams.split("/").reverse().entries()) {
-    const suffix = [0, i, arg.endsWith("?") ? "?" : ""].join("");
-    if (/^:/.test(arg)) {
-      args.unshift(`${arg.replace(/\W/g, "_")}${suffix}: string|number`);
-    } else {
-      args.unshift(`literal${suffix}: "${arg}"`);
-    }
+  for (const [i, param] of pathParams.split("/").reverse().entries()) {
+    const [name, type] = /^:/.test(param)
+      ? [`${param.replace(/\W/g, "_")}0${i}`, "string|number"]
+      : [`literal0${i}`, `"${param}"`];
+    params.unshift({
+      scope: "params",
+      name,
+      type,
+      optional: param.endsWith("?"),
+    });
   }
 
-  return args;
+  return params;
 }
 
 function getReturnType(node: Expression | Node): string | undefined {

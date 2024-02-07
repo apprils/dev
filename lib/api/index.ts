@@ -1,11 +1,13 @@
-import { dirname, basename, join } from "path";
+import { resolve, dirname, basename, join } from "path";
 
-import type { Plugin } from "vite";
+import type { Plugin, ResolvedConfig } from "vite";
 import fsx from "fs-extra";
 import { glob } from "glob";
 import { parse } from "yaml";
 
 import { type BuildOptions, transform } from "esbuild";
+
+import type { Route } from "./@types";
 
 import { BANNER, render, renderToFile } from "../render";
 import { resolvePath, sanitizePath, filesGeneratorFactory } from "../base";
@@ -14,6 +16,7 @@ import { esbuilderFactory } from "./esbuilder";
 
 import routeTpl from "./templates/route.tpl";
 import routesTpl from "./templates/routes.tpl";
+import routesDtsTpl from "./templates/routes.d.tpl";
 import urlmapTpl from "./templates/urlmap.tpl";
 
 import fetchMdlTpl from "./templates/fetch/module.tpl";
@@ -25,6 +28,7 @@ import fetchHmrTpl from "./templates/fetch/hmr.tpl";
 const defaultTemplates = {
   route: routeTpl,
   routes: routesTpl,
+  routesDts: routesDtsTpl,
   urlmap: urlmapTpl,
 };
 
@@ -38,17 +42,6 @@ type Options = {
   fetchModulePrefix?: string;
   sourceFiles?: string | string[];
   templates?: Partial<Templates>;
-};
-
-type Route = {
-  name: string;
-  importName: string;
-  path: string;
-  importPath: string;
-  file: string;
-  meta: string;
-  serialized: string;
-  fetchModuleId?: string;
 };
 
 // aliases not reflected in fetch modules nor in urlmap
@@ -190,17 +183,11 @@ export async function vitePluginApprilApi(opts: Options): Promise<Plugin> {
     };
   }
 
-  const fetchModuleFactory = async (
-    route: Omit<Route, "fetchModuleId"> & { fetchModuleId: string },
-  ): Promise<FetchModule> => {
-    const { file, name, fetchModuleId } = route;
-
-    const { typeDeclarations: fetchTypes, endpoints: fetchEndpoints } =
-      extractTypedEndpoints(await fsx.readFile(file, "utf8"), {
-        root: sourceFolder,
-        base: dirname(file.replace(resolvePath(), "")),
-      });
-
+  const fetchModuleFactory = (
+    route: Route,
+    fetchModuleId: string,
+  ): FetchModule => {
+    const { file, name } = route;
     return {
       id: fetchModuleId,
       name,
@@ -209,8 +196,6 @@ export async function vitePluginApprilApi(opts: Options): Promise<Plugin> {
       code: render(fetchMdlTpl, {
         apiDir,
         sourceFolder,
-        fetchTypes,
-        fetchEndpoints,
         fetchBaseModule,
         ...route,
       }),
@@ -224,7 +209,15 @@ export async function vitePluginApprilApi(opts: Options): Promise<Plugin> {
     };
   };
 
-  async function configResolved() {
+  async function configResolved(config: ResolvedConfig) {
+    esbuilder = esbuilderFactory(esbuildConfig, {
+      sourceFolder,
+      apiDir,
+      outDir: resolve(config.build.outDir, join("..", apiDir)),
+      flushPatterns: apiHmrFlushPatterns,
+      alias: config.resolve.alias,
+    });
+
     const patterns = Array.isArray(sourceFiles)
       ? [...sourceFiles]
       : [sourceFiles];
@@ -254,13 +247,14 @@ export async function vitePluginApprilApi(opts: Options): Promise<Plugin> {
             // path should start with a slash
             const path = join("/", name);
 
-            const suffix = routeSetup?.file
+            const fileExt = routeSetup?.file
               ? routeSetup.file.replace(/.+(\.[^.]+)$/, "$1")
               : /\/$/.test(routePath)
                 ? "/index.ts"
                 : ".ts";
 
-            const file = resolvePath(importPath + suffix);
+            const file = resolvePath(importPath + fileExt);
+            const fileContent = await fsx.readFile(file, "utf8");
 
             const meta = JSON.stringify(routeSetup?.meta || {});
 
@@ -269,8 +263,22 @@ export async function vitePluginApprilApi(opts: Options): Promise<Plugin> {
               path,
             });
 
+            // prettier-ignore
+            const {
+              typeDeclarations,
+              payloadParams,
+              endpoints,
+            } = extractTypedEndpoints(fileContent, {
+              root: sourceFolder,
+              base: dirname(file.replace(resolvePath(), "")),
+            });
+
             const fetchModuleId = fetchFilter({ name, path, file })
               ? [fetchModulePrefix, name].join(":")
+              : undefined;
+
+            const schemaModuleId = payloadParams.length
+              ? "@schemaValidator:" + importPath + fileExt
               : undefined;
 
             routeMap[path] = {
@@ -279,9 +287,14 @@ export async function vitePluginApprilApi(opts: Options): Promise<Plugin> {
               path,
               importPath,
               file,
+              fileExt,
               meta,
               serialized,
+              typeDeclarations,
+              payloadParams,
+              endpoints,
               fetchModuleId,
+              schemaModuleId,
             };
 
             for (const alias of typeof routeSetup?.alias === "string"
@@ -299,10 +312,10 @@ export async function vitePluginApprilApi(opts: Options): Promise<Plugin> {
 
             if (fetchModuleId) {
               watchMap.apiFiles[file] = async () => {
-                virtualModules.fetch[fetchModuleId] = await fetchModuleFactory({
-                  ...routeMap[path],
+                virtualModules.fetch[fetchModuleId] = fetchModuleFactory(
+                  routeMap[path],
                   fetchModuleId,
-                });
+                );
 
                 const modules = Object.values(virtualModules.fetch).filter(
                   (e) => ![fetchModulePrefix, fetchBaseModule].includes(e.id),
@@ -389,6 +402,7 @@ export async function vitePluginApprilApi(opts: Options): Promise<Plugin> {
 
           for (const [outFile, template, routes] of [
             ["_routes.ts", templates.routes, routesWithAlias],
+            ["_routes.d.ts", templates.routesDts, routesWithAlias],
             ["_urlmap.ts", templates.urlmap, routesNoAlias],
           ] as const) {
             await filesGenerator.generateFile(join(apiDir, outFile), {
@@ -483,13 +497,6 @@ export async function vitePluginApprilApi(opts: Options): Promise<Plugin> {
       if (!config.build?.outDir) {
         throw new Error("Config is missing build.outDir");
       }
-
-      esbuilder = esbuilderFactory(esbuildConfig, {
-        apiDir: join(sourceFolder, apiDir),
-        outDir: join(config.build.outDir, basename(apiDir)),
-        flushPatterns: apiHmrFlushPatterns,
-      });
-
       return {
         build: {
           outDir: join(config.build.outDir, outDirSuffix),
