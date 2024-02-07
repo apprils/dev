@@ -1,11 +1,9 @@
 
-{{fileContent}}
-
 {{#typeDeclarations}}
 {{.}}
 {{/typeDeclarations}}
 
 {{#payloadParams}}
-export type {{id}} {{type}};
+export type {{id}} = {{type}};
 {{/payloadParams}}
 

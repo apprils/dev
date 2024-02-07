@@ -27,7 +27,7 @@ export default [
     {{#errors.length}}
     throw `400: {{#errors}}{{.}}{{/errors}}`
     {{/errors.length}}
-  })
+  }),
   {{/payloadParams}}
 ]
 
