@@ -216,8 +216,13 @@ export function extractTypedEndpoints(
       return {
         method,
         useMethod: method.replace(/^\w/, (m) => "use" + m.toUpperCase()),
-        httpMethod: HTTP_METHODS[method as Method],
+        httpMethod: HTTP_METHODS[method],
         overloads,
+        bodyType: overloads
+          .reduce((a: string[], e) => {
+            return a.includes(e.bodyType) ? a : [...a, e.bodyType];
+          }, [])
+          .join(" | "),
       };
     }),
   };

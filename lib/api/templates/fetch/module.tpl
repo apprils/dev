@@ -38,6 +38,13 @@ let apiFactory = function apiFactory(api: FetchMapper) {
     {{.}},
     {{/renderedParams}}
   ): Promise<{{bodyType}}>;
+  {{/overloads}}
+  function {{method}}(...args: unknown[]): Promise<{{bodyType}}> {
+    return api.{{method}}(...args)
+  }
+
+  {{! repeating overloads cause implementation should go right after overloads}}
+  {{#overloads}}
   function {{useMethod}}(
     {{#renderedParams}}
     {{.}},
@@ -50,10 +57,7 @@ let apiFactory = function apiFactory(api: FetchMapper) {
     useFetchOptions?: UseFetchOptions,
   ): UseFetchReturn<{{bodyType}}>;
   {{/overloads}}
-  function {{method}}(...args: unknown[]): Promise<unknown> {
-    return api.{{method}}(...args)
-  }
-  function {{useMethod}}(...args: unknown[]): Promise<unknown> {
+  function {{useMethod}}(...args: unknown[]): Promise<{{bodyType}}> {
     const [ apiArgs, useFetchOptions ] = useMethodArgsMapper(args)
     return useFetch(urlBuilder(base, ...apiArgs), { method: "{{httpMethod}}" }, useFetchOptions)
   }

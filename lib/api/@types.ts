@@ -28,6 +28,7 @@ export type Endpoint = {
   useMethod: string;
   httpMethod: string;
   overloads: MethodOverload[];
+  bodyType: string;
 }
 
 export type TypeDeclaration = {
