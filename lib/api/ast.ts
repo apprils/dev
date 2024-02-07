@@ -192,7 +192,10 @@ function argumentsMapper(
 
   if (payloadParam) {
     const [typeExp] = tsquery
-      .match(payloadParam, "TypeReference,TypeLiteral,AnyKeyword")
+      .match(
+        payloadParam,
+        "IntersectionType,TypeReference,TypeLiteral,AnyKeyword",
+      )
       .filter((e) => e.parent === payloadParam);
 
     if (typeExp) {
@@ -254,7 +257,7 @@ function argumentsMapper(
 
 function getReturnType(node: Expression | Node): string | undefined {
   const [typeExp] = tsquery
-    .match(node, "TypeReference,TypeLiteral,AnyKeyword")
+    .match(node, "IntersectionType,TypeReference,TypeLiteral,AnyKeyword")
     .filter((e) => e.parent === node);
 
   if (!typeExp) {
@@ -265,6 +268,7 @@ function getReturnType(node: Expression | Node): string | undefined {
     const [wrappedType] = tsquery.match(
       typeExp,
       [
+        "IntersectionType:first-child",
         "TypeReference:first-child",
         "TypeLiteral:first-child",
         "AnyKeyword:first-child",
