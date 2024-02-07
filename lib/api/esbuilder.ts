@@ -30,8 +30,8 @@ export function esbuilderFactory(
   const schemaValidator: Plugin = {
     name: "schemaValidator",
     setup(build) {
-      const filter = /@schemaValidator:(.+)/;
-      const namespace = "@appril";
+      const filter = new RegExp(`${sourceFolder}:(.+):schema`);
+      const namespace = "@appril/schemaValidator";
 
       build.onResolve({ filter }, ({ path }) => {
         return {
@@ -40,18 +40,24 @@ export function esbuilderFactory(
         };
       });
 
-      build.onLoad({ filter: /.*/, namespace }, async ({ path }) => {
+      build.onLoad({ filter, namespace }, async ({ path }) => {
         const file = resolvePath(path.replace(filter, "$1"));
         const fileContent = await fsx.readFile(file, "utf8");
 
-        // prettier-ignore
-        const {
-          typeDeclarations,
-          payloadParams,
-        } = extractTypedEndpoints(fileContent, {
-          root: sourceFolder,
-          base: dirname(file.replace(resolvePath(), "")),
-        });
+        const { typeDeclarations, payloadParams } = extractTypedEndpoints(
+          fileContent,
+          {
+            root: sourceFolder,
+            base: dirname(file.replace(resolvePath(), "")),
+          },
+        );
+
+        if (!payloadParams.length) {
+          return {
+            loader: "js",
+            contents: "module.exports = []",
+          };
+        }
 
         const typeDeclarationsMapper = async ({
           text,
@@ -76,10 +82,10 @@ export function esbuilderFactory(
             : path;
 
           if (await fsx.pathExists(resolvedPath + ".ts")) {
-            return fsx.readFile(resolvedPath + ".ts");
+            return fsx.readFile(resolvedPath + ".ts", "utf8");
           }
 
-          return fsx.readFile(resolvedPath + "/index.ts");
+          return fsx.readFile(resolvedPath + "/index.ts", "utf8");
         };
 
         const sourceText = render(schemaSourceTpl, {

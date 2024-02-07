@@ -44,9 +44,6 @@ export type Route = {
   fileExt: string;
   meta: string;
   serialized: string;
-  typeDeclarations: TypeDeclaration[];
-  endpoints: Endpoint[];
-  payloadParams: PayloadParam[];
   fetchModuleId?: string;
   schemaModuleId?: string;
 };

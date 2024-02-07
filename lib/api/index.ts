@@ -7,7 +7,7 @@ import { parse } from "yaml";
 
 import { type BuildOptions, transform } from "esbuild";
 
-import type { Route } from "./@types";
+import type { Endpoint, PayloadParam, Route, TypeDeclaration } from "./@types";
 
 import { BANNER, render, renderToFile } from "../render";
 import { resolvePath, sanitizePath, filesGeneratorFactory } from "../base";
@@ -38,7 +38,7 @@ type Options = {
   esbuildConfig: BuildOptions;
   apiDir?: string;
   apiHmrFlushPatterns?: RegExp[];
-  fetchFilter?: (r: Pick<Route, "name" | "path" | "file">) => boolean;
+  heuristicsFilter?: (r: Pick<Route, "name" | "path" | "file">) => boolean;
   fetchModulePrefix?: string;
   sourceFiles?: string | string[];
   templates?: Partial<Templates>;
@@ -125,7 +125,7 @@ export async function vitePluginApprilApi(opts: Options): Promise<Plugin> {
   const {
     esbuildConfig,
     apiDir = "api",
-    fetchFilter = (_r) => true,
+    heuristicsFilter = (_r) => true,
     sourceFiles = "**/*_routes.yml",
     apiHmrFlushPatterns,
   } = opts;
@@ -185,19 +185,26 @@ export async function vitePluginApprilApi(opts: Options): Promise<Plugin> {
 
   const fetchModuleFactory = (
     route: Route,
-    fetchModuleId: string,
+    assets: {
+      fetchModuleId: string;
+      typeDeclarations: TypeDeclaration[];
+      payloadParams: PayloadParam[];
+      endpoints: Endpoint[];
+    },
   ): FetchModule => {
     const { file, name } = route;
+    const { fetchModuleId: id } = assets;
     return {
-      id: fetchModuleId,
+      id,
       name,
-      importName: fetchModuleId.replace(/\W/g, "_"),
+      importName: id.replace(/\W/g, "_"),
       watchFiles: [file],
       code: render(fetchMdlTpl, {
         apiDir,
         sourceFolder,
         fetchBaseModule,
         ...route,
+        ...assets,
       }),
       hmrUpdate: `
         (updated) => {
@@ -254,7 +261,6 @@ export async function vitePluginApprilApi(opts: Options): Promise<Plugin> {
                 : ".ts";
 
             const file = resolvePath(importPath + fileExt);
-            const fileContent = await fsx.readFile(file, "utf8");
 
             const meta = JSON.stringify(routeSetup?.meta || {});
 
@@ -263,22 +269,14 @@ export async function vitePluginApprilApi(opts: Options): Promise<Plugin> {
               path,
             });
 
-            // prettier-ignore
-            const {
-              typeDeclarations,
-              payloadParams,
-              endpoints,
-            } = extractTypedEndpoints(fileContent, {
-              root: sourceFolder,
-              base: dirname(file.replace(resolvePath(), "")),
-            });
+            const heuristicsEnabled = heuristicsFilter({ name, path, file });
 
-            const fetchModuleId = fetchFilter({ name, path, file })
+            const fetchModuleId = heuristicsEnabled
               ? [fetchModulePrefix, name].join(":")
               : undefined;
 
-            const schemaModuleId = payloadParams.length
-              ? "@schemaValidator:" + importPath + fileExt
+            const schemaModuleId = heuristicsEnabled
+              ? [sourceFolder, importPath + fileExt, "schema"].join(":")
               : undefined;
 
             routeMap[path] = {
@@ -290,9 +288,6 @@ export async function vitePluginApprilApi(opts: Options): Promise<Plugin> {
               fileExt,
               meta,
               serialized,
-              typeDeclarations,
-              payloadParams,
-              endpoints,
               fetchModuleId,
               schemaModuleId,
             };
@@ -312,9 +307,16 @@ export async function vitePluginApprilApi(opts: Options): Promise<Plugin> {
 
             if (fetchModuleId) {
               watchMap.apiFiles[file] = async () => {
+                const fileContent = await fsx.readFile(file, "utf8");
+
+                const assets = extractTypedEndpoints(fileContent, {
+                  root: sourceFolder,
+                  base: dirname(file.replace(resolvePath(), "")),
+                });
+
                 virtualModules.fetch[fetchModuleId] = fetchModuleFactory(
                   routeMap[path],
-                  fetchModuleId,
+                  { fetchModuleId, ...assets },
                 );
 
                 const modules = Object.values(virtualModules.fetch).filter(
