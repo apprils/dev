@@ -23,10 +23,12 @@
     }
   },
   "scripts": {
+    "// ✨ lint": "",
+    "lint": "biome lint ./lib",
     "// ✨ build": "",
     "esbundler": "func() { e=$1; shift; esbuild $e --bundle --platform=node --target=node20 --packages=external --loader:.tpl=text $*; }; func",
     "prebuild": "mkdir -p pkg; find pkg -type f -exec rm -fv {} \\;",
-    "build": "npm run esbundler -- lib/index.ts --sourcemap=inline --outdir=pkg",
+    "build": "set -e; npm run lint; npm run esbundler -- lib/index.ts --sourcemap=inline --outdir=pkg",
     "postbuild": "tsc"
   },
   "prettier": "@appril/prettier-config",
@@ -34,10 +36,6 @@
     "hooks": {
       "before:init": [
         "npm run build"
-      ],
-      "after:release": [
-        "mkdir -p var/pub",
-        "npm pack --pack-destination var/pub"
       ]
     }
   },
@@ -58,13 +56,12 @@
     "yaml": "^2.3.4"
   },
   "devDependencies": {
-    "@appril/prettier-config": "^0.2.2",
     "@appril/tsconfig": "^0.2.3",
+    "@biomejs/biome": "^1.5.3",
     "@types/fs-extra": "^11.0.4",
     "@types/koa": "^2.14.0",
     "@types/mustache": "^4.2.5",
     "@types/node": "^20.11.16",
-    "prettier": "^3.2.5",
     "release-it": "^17.0.3"
   },
   "peerDependencies": {
