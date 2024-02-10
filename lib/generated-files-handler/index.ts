@@ -7,15 +7,17 @@ import fsx from "fs-extra";
 
 import { resolvePath, GENERATED_FILES_TMPDIR } from "../base";
 
-export async function generatedFilesHandler(o: {
-  appendTo: string;
-}): Promise<Plugin>;
+type Options = { appendTo: string };
+
+type CustomHandler = (entries: string[]) => Promise<void>;
+
+export async function generatedFilesHandler(o: Options): Promise<Plugin>;
+
+export async function generatedFilesHandler(h: CustomHandler): Promise<Plugin>;
 
 export async function generatedFilesHandler(
-  h: (entries: string[]) => Promise<void>,
-): Promise<Plugin>;
-
-export async function generatedFilesHandler(...args: any[]): Promise<Plugin> {
+  arg: Options | CustomHandler,
+): Promise<Plugin> {
   const appendToHandler = async (appendTo: string, entries: string[]) => {
     const lines: string[] = [];
 
@@ -33,14 +35,12 @@ export async function generatedFilesHandler(...args: any[]): Promise<Plugin> {
 
   let handler: (e: string[]) => Promise<void> = async () => {};
 
-  if (typeof args[0] === "function") {
-    handler = args[0];
-  } else if (args[0]?.appendTo) {
+  if (typeof arg === "function") {
+    handler = arg;
+  } else if (typeof arg === "object") {
     handler = (entries) =>
       appendToHandler(
-        /^\//.test(args[0].appendTo)
-          ? args[0].appendTo
-          : resolvePath(args[0].appendTo),
+        /^\//.test(arg.appendTo) ? arg.appendTo : resolvePath(arg.appendTo),
         entries,
       );
   }

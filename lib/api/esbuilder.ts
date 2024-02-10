@@ -59,10 +59,10 @@ export function esbuilderFactory(
           };
         }
 
-        const typeDeclarationsMapper = async function ({
+        const typeDeclarationsMapper = async ({
           text,
           importDeclaration,
-        }: TypeDeclaration) {
+        }: TypeDeclaration) => {
           if (!importDeclaration) {
             return text;
           }
@@ -93,7 +93,7 @@ export function esbuilderFactory(
 
         const { getZodSchemasFile, errors } = tsToZod({
           sourceText,
-          // prettier-ignore
+          // biome-ignore format:
           nameFilter: (id) => payloadParams.some((e) => e.id === id || e.type === id),
           getSchemaName: (e) => e,
         });
@@ -104,7 +104,7 @@ export function esbuilderFactory(
           contents: render(schemaModuleTpl, {
             BANNER,
             typeDeclarations,
-            tsToZod: errors.length ? "" : getZodSchemasFile(path + "-source"),
+            tsToZod: errors.length ? "" : getZodSchemasFile(`${path}-source`),
             payloadParams,
             errors,
           }),
@@ -180,7 +180,7 @@ async function tryResolveFile(
 ) {
   const matchedAlias = alias.find((e) => {
     return typeof e.find === "string"
-      ? path.startsWith(e.find + "/")
+      ? path.startsWith(`${e.find}/`)
       : e.find.test(path);
   });
 

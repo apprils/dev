@@ -18,7 +18,7 @@ export function vitePluginDefine(files: File[]): Plugin {
     name: "vite-plugin-define",
 
     async config() {
-      const define: { [key: string]: any } = {};
+      const define: Record<string, unknown> = {};
 
       for (const { file: _file, keys, defineOn = "process.env" } of files) {
         define[defineOn] = {};
@@ -37,7 +37,7 @@ export function vitePluginDefine(files: File[]): Plugin {
 
         const filter = Array.isArray(keys)
           ? (key: string) => keys.includes(key)
-          : (key: string) => true;
+          : (_key: string) => true;
 
         for (const key of Object.keys(env).filter(filter)) {
           define[`${defineOn}.${key}`] = JSON.stringify(env[key]);

@@ -19,7 +19,7 @@ type Context = {
   folders: ContextFolder[];
 };
 
-type ContextHandler = (data: Context) => any;
+type ContextHandler = (data: Context) => unknown;
 
 type Entry = {
   path: string;
@@ -53,7 +53,7 @@ export function vitePluginFileBundler(entries: Entry[]): Plugin {
     config: ResolvedConfig,
     entry: Required<Entry>,
   ): Promise<ResolvedFile[]> {
-    let files: ResolvedFile[] = [];
+    const files: ResolvedFile[] = [];
 
     const patterns = Array.isArray(entry.pattern)
       ? entry.pattern
@@ -95,7 +95,7 @@ export function vitePluginFileBundler(entries: Entry[]): Plugin {
 
         const name = match.relative().replace(/\.([^.]+)$/, "");
 
-        // prettier-ignore
+        // biome-ignore format:
         const folder = entry.folders.find(
           (f) => new RegExp(`^${f}/`).test(name)
         ) || "";
@@ -108,8 +108,8 @@ export function vitePluginFileBundler(entries: Entry[]): Plugin {
           path: match.fullpath(),
           relativePath: match.relative(),
           folder,
-          importName: "$" + match.relative().replace(/[^\w]/g, "_"),
-          importPath: "./" + name,
+          importName: `$${match.relative().replace(/[^\w]/g, "_")}`,
+          importPath: `./${name}`,
           content,
           match,
         });
@@ -150,14 +150,14 @@ export function vitePluginFileBundler(entries: Entry[]): Plugin {
         template,
         context: {
           BANNER,
-          ...context,
+          ...(context || {}),
         },
       });
     }
 
     await filesGenerator.persistGeneratedFiles(
       join(sourceFolder, PLUGIN_NAME),
-      (f) => resolvePath(f).replace(resolvePath("..") + "/", ""),
+      (f) => resolvePath(f).replace(`${resolvePath("..")}/`, ""),
     );
   }
 

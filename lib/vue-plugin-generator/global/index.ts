@@ -1,7 +1,7 @@
 import { basename, join } from "path";
 import { readFile } from "fs/promises";
 
-import type { Plugin, ResolvedConfig } from "vite";
+import type { Plugin } from "vite";
 
 import { resolvePath, filesGeneratorFactory } from "../../base";
 import { BANNER } from "../../render";
@@ -19,7 +19,7 @@ const defaultTemplates = {
 type PluginDefinition = {
   pluginName?: string;
   globalPropertiesPrefix?: string;
-  globalProperties?: { [key: string]: any };
+  globalProperties?: Record<string, unknown>;
 };
 
 type Options = {
@@ -44,7 +44,7 @@ export default function globalPluginsGenerator(opts: Options): Plugin {
 
   const filesGenerator = filesGeneratorFactory();
 
-  async function generateFiles({ root }: ResolvedConfig) {
+  async function generateFiles() {
     // re-reading templates every time
 
     const templates: TemplateMap = { ...defaultTemplates };
@@ -83,7 +83,7 @@ export default function globalPluginsGenerator(opts: Options): Plugin {
         },
       );
 
-      await filesGenerator.generateFile(join(outDir, pluginName + ".ts"), {
+      await filesGenerator.generateFile(join(outDir, `${pluginName}.ts`), {
         template: templates.plugin,
         context: {
           BANNER,
@@ -119,8 +119,8 @@ export default function globalPluginsGenerator(opts: Options): Plugin {
     });
   }
 
-  async function configResolved(config: ResolvedConfig) {
-    await generateFiles(config);
+  async function configResolved() {
+    await generateFiles();
     await filesGenerator.persistGeneratedFiles(
       join(sourceFolder, PLUGIN_NAME),
       (f) => join(sourceFolder, f),
@@ -140,9 +140,9 @@ export default function globalPluginsGenerator(opts: Options): Plugin {
       if (watchedFiles.length) {
         server.watcher.add(watchedFiles);
 
-        server.watcher.on("change", function (file: any) {
+        server.watcher.on("change", (file) => {
           if (watchedFiles.some((path) => file.includes(path))) {
-            return generateFiles(server.config);
+            return generateFiles();
           }
         });
       }

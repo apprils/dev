@@ -18,14 +18,16 @@ export function sanitizePath(path: string): string {
 export function filesGeneratorFactory() {
   const generatedFiles = new Set<string>();
 
-  function generateFile<RenderContext = {}>(
+  function generateFile<RenderContext = object>(
     outfile: string,
     render: { template: string; context: RenderContext },
   ): Promise<void>;
 
   function generateFile(outfile: string, content: string): Promise<void>;
 
-  function generateFile(...args: any[]) {
+  function generateFile(
+    ...args: [string, string | { template: string; context: object }]
+  ) {
     const [outfile, rest] = args;
     generatedFiles.add(outfile);
     return typeof rest === "string"

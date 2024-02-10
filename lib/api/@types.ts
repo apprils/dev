@@ -1,4 +1,3 @@
-
 export const METHODS = ["get", "post", "put", "patch", "del"] as const;
 
 export type Method = (typeof METHODS)[number];
@@ -29,7 +28,7 @@ export type Endpoint = {
   httpMethod: string;
   overloads: MethodOverload[];
   bodyType: string;
-}
+};
 
 export type TypeDeclaration = {
   text: string;
@@ -45,7 +44,7 @@ export type TypeDeclaration = {
     name: string;
     text: string;
   };
-}
+};
 
 export type Route = {
   name: string;
@@ -59,4 +58,3 @@ export type Route = {
   fetchModuleId?: string;
   schemaModuleId?: string;
 };
-

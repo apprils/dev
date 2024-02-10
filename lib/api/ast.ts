@@ -154,7 +154,9 @@ export function extractTypedEndpoints(
     }
 
     const pathParams = isStringLiteral(node.arguments?.[0])
-      ? node.arguments?.[0].getText().replace(/^\W|\W$/g, "") // removing quotes
+      ? node.arguments?.[0]
+          .getText()
+          .replace(/^\W|\W$/g, "") // removing quotes
       : null;
 
     const pathParamsId = pathParams?.replace(
@@ -178,7 +180,7 @@ export function extractTypedEndpoints(
       });
     }
 
-    let bodyType;
+    let bodyType: string | undefined;
 
     if (node.typeArguments?.[2]) {
       // BodyT provided as TypeArgument, like
@@ -215,12 +217,13 @@ export function extractTypedEndpoints(
     endpoints: endpointsEntries.map(([method, overloads]): Endpoint => {
       return {
         method,
-        useMethod: method.replace(/^\w/, (m) => "use" + m.toUpperCase()),
+        useMethod: method.replace(/^\w/, (m) => `use${m.toUpperCase()}`),
         httpMethod: HTTP_METHODS[method],
         overloads,
         bodyType: overloads
           .reduce((a: string[], e) => {
-            return a.includes(e.bodyType) ? a : [...a, e.bodyType];
+            a.includes(e.bodyType) || a.push(e.bodyType);
+            return a;
           }, [])
           .join(" | "),
       };

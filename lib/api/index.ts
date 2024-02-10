@@ -52,7 +52,7 @@ type RouteSetup = {
   alias?: string | string[];
   file?: string;
   template?: string;
-  meta?: Record<string, any>;
+  meta?: Record<string, unknown>;
 };
 
 type FetchModule = {
@@ -155,9 +155,9 @@ export async function vitePluginApprilApi(opts: Options): Promise<Plugin> {
   };
 
   const watchMap: {
-    srcFiles: Record<string, Function>;
-    tplFiles: Record<string, Function>;
-    apiFiles: Record<string, Function>;
+    srcFiles: Record<string, () => Promise<void>>;
+    tplFiles: Record<string, () => Promise<void>>;
+    apiFiles: Record<string, () => Promise<void>>;
   } = {
     srcFiles: {},
     tplFiles: {},

@@ -37,8 +37,8 @@ type Options = {
 
 type ViewDefinition = {
   params?: string;
-  meta?: any;
-  options?: Record<string, any>;
+  meta?: Record<string, unknown>;
+  options?: Record<string, unknown>;
   env?: string | boolean;
 };
 
@@ -124,7 +124,7 @@ export function vitePluginApprilViews(opts?: Options): Plugin {
       const importPath = sanitizePath(viewPath).replace(/\/+$/, "");
 
       const suffix = /\/$/.test(viewPath)
-        ? "/" + basename(importPath) + ".vue"
+        ? `/${basename(importPath)}.vue`
         : ".vue";
 
       const path = join(base, importPath.replace(/^index$/, "")).replace(
@@ -208,7 +208,7 @@ export function vitePluginApprilViews(opts?: Options): Plugin {
     });
 
     {
-      const reducer = (map: Record<string, {}>, { envApi }: View) => ({
+      const reducer = (map: Record<string, object>, { envApi }: View) => ({
         ...map,
         ...(envApi ? { [envApi]: {} } : {}),
       });
@@ -246,7 +246,7 @@ export function vitePluginApprilViews(opts?: Options): Plugin {
       if (watchedFiles.length) {
         server.watcher.add(watchedFiles);
 
-        server.watcher.on("change", function (file) {
+        server.watcher.on("change", (file) => {
           if (watchedFiles.some((path) => file.includes(path))) {
             return generateFiles(server.config);
           }

@@ -1,4 +1,3 @@
-
 export type View = {
   name: string;
   importName: string;
@@ -9,9 +8,8 @@ export type View = {
   options: string;
   importPath: string;
   envApi?: string;
-}
+};
 
 export type ExportedView = View & {
   serialized: string;
-}
-
+};
