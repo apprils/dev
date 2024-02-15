@@ -1,7 +1,7 @@
 import { basename, join } from "path";
 import { readFile } from "fs/promises";
 
-import type { Plugin } from "vite";
+import type { Plugin, ResolvedConfig } from "vite";
 
 import { resolvePath, filesGeneratorFactory } from "../../base";
 import { BANNER } from "../../render";
@@ -42,11 +42,10 @@ export default function globalPluginsGenerator(opts: Options): Plugin {
 
   const sourceFolder = basename(resolvePath());
 
-  const filesGenerator = filesGeneratorFactory();
+  async function generateFiles(config: ResolvedConfig) {
+    const filesGenerator = filesGeneratorFactory(config);
 
-  async function generateFiles() {
     // re-reading templates every time
-
     const templates: TemplateMap = { ...defaultTemplates };
 
     for (const [name, file] of Object.entries(optedTemplates)) {
@@ -117,20 +116,16 @@ export default function globalPluginsGenerator(opts: Options): Plugin {
         template: optedTemplates.index,
       },
     });
-  }
 
-  async function configResolved() {
-    await generateFiles();
-    await filesGenerator.persistGeneratedFiles(
-      join(sourceFolder, PLUGIN_NAME),
-      (f) => join(sourceFolder, f),
+    await filesGenerator.persistGeneratedFiles(PLUGIN_NAME, (f) =>
+      join(sourceFolder, f),
     );
   }
 
   return {
     name: PLUGIN_NAME,
 
-    configResolved,
+    configResolved: generateFiles,
 
     configureServer(server) {
       // adding templates to watchlist
@@ -142,7 +137,7 @@ export default function globalPluginsGenerator(opts: Options): Plugin {
 
         server.watcher.on("change", (file) => {
           if (watchedFiles.some((path) => file.includes(path))) {
-            return generateFiles();
+            return generateFiles(server.config);
           }
         });
       }

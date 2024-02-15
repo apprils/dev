@@ -5,7 +5,7 @@ import { glob } from "glob";
 import { watch } from "chokidar";
 import fsx from "fs-extra";
 
-import { resolvePath, GENERATED_FILES_TMPDIR } from "../base";
+import { resolvePath, GENERATED_FILES_DIR } from "../base";
 
 type Options = { appendTo: string };
 
@@ -47,14 +47,16 @@ export async function generatedFilesHandler(
 
   return {
     name: "generated-files-handler",
-    async configureServer() {
+    async configureServer({ config }) {
       // somehow server.watcher does not work with arbitrary folders
       // that initially are empty; so using bare chokidar watcher
 
-      // watched root should exist before watcher created
-      await fsx.ensureDir(GENERATED_FILES_TMPDIR);
+      const watchDir = join(config.cacheDir, GENERATED_FILES_DIR);
 
-      const watchGlob = join(GENERATED_FILES_TMPDIR, "**/*");
+      // watchDir should exist before watcher created
+      await fsx.ensureDir(watchDir);
+
+      const watchGlob = join(watchDir, "**/*");
       const queue: string[] = [];
       const eventHandler = (file: string) => queue.push(file);
 

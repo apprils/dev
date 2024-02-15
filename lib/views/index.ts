@@ -95,13 +95,12 @@ export function vitePluginApprilViews(opts?: Options): Plugin {
 
   const sourceFolder = basename(resolvePath());
 
-  const filesGenerator = filesGeneratorFactory();
-
   const viewsFile = join(viewsDir, "_views.yml");
 
-  async function generateFiles({ base }: ResolvedConfig) {
-    // re-reading files every time
+  async function generateFiles(config: ResolvedConfig) {
+    const filesGenerator = filesGeneratorFactory(config);
 
+    // re-reading files every time
     const templates: TemplateMap = { ...defaultTemplates };
 
     for (const [name, file] of Object.entries(optedTemplates)) {
@@ -114,6 +113,7 @@ export function vitePluginApprilViews(opts?: Options): Plugin {
     const viewDefinitions = parse(
       await readFile(resolvePath(viewsFile), "utf8"),
     );
+
     const viewEntries: [string, ViewDefinition][] = Object.entries(
       viewDefinitions,
     ).map(([p, d]) => [p, d || {}]);
@@ -127,7 +127,7 @@ export function vitePluginApprilViews(opts?: Options): Plugin {
         ? `/${basename(importPath)}.vue`
         : ".vue";
 
-      const path = join(base, importPath.replace(/^index$/, "")).replace(
+      const path = join(config.base, importPath.replace(/^index$/, "")).replace(
         /\/$/,
         "",
       );
@@ -223,20 +223,16 @@ export function vitePluginApprilViews(opts?: Options): Plugin {
         content,
       );
     }
-  }
 
-  async function configResolved(config: ResolvedConfig) {
-    await generateFiles(config);
-    await filesGenerator.persistGeneratedFiles(
-      join(sourceFolder, PLUGIN_NAME),
-      (f) => join(sourceFolder, f),
+    await filesGenerator.persistGeneratedFiles(PLUGIN_NAME, (f) =>
+      join(sourceFolder, f),
     );
   }
 
   return {
     name: PLUGIN_NAME,
 
-    configResolved,
+    configResolved: generateFiles,
 
     configureServer(server) {
       // adding optedTemplates to watchlist

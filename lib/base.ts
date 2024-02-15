@@ -1,11 +1,14 @@
 import { join, resolve } from "path";
 
+import { type ResolvedConfig } from "vite";
 import fsx from "fs-extra";
 
 import { renderToFile } from "./render";
 
 const CWD = process.cwd();
-export const GENERATED_FILES_TMPDIR = "../var/.cache/generatedFiles";
+
+// a folder inside cacheDir
+export const GENERATED_FILES_DIR = "generated-files-handler";
 
 export function resolvePath(...path: string[]): string {
   return resolve(CWD, join(...path));
@@ -15,7 +18,7 @@ export function sanitizePath(path: string): string {
   return path.replace(/\.+\/+/g, "");
 }
 
-export function filesGeneratorFactory() {
+export function filesGeneratorFactory(config: ResolvedConfig) {
   const generatedFiles = new Set<string>();
 
   function generateFile<RenderContext = object>(
@@ -37,18 +40,21 @@ export function filesGeneratorFactory() {
 
   return {
     generateFile,
-    persistGeneratedFiles(outfile: string, lineMapper?: (f: string) => string) {
+    persistGeneratedFiles(outFile: string, lineMapper?: (f: string) => string) {
       return persistGeneratedFiles(
-        outfile,
         lineMapper ? [...generatedFiles].map(lineMapper) : [...generatedFiles],
+        { cacheDir: config.cacheDir, outFile },
       );
     },
   };
 }
 
-export function persistGeneratedFiles(outfile: string, entries: string[]) {
+export function persistGeneratedFiles(
+  entries: string[],
+  { cacheDir, outFile }: { cacheDir: string; outFile: string },
+) {
   return fsx.outputFile(
-    resolvePath(GENERATED_FILES_TMPDIR, outfile),
+    join(cacheDir, GENERATED_FILES_DIR, outFile),
     [...entries].join("\n"),
   );
 }

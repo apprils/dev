@@ -120,7 +120,7 @@ export function vitePluginFileBundler(entries: Entry[]): Plugin {
   }
 
   async function generateFiles(config: ResolvedConfig) {
-    const filesGenerator = filesGeneratorFactory();
+    const filesGenerator = filesGeneratorFactory(config);
 
     for (const _entry of entries) {
       const entry: Required<Entry> = {
@@ -155,9 +155,8 @@ export function vitePluginFileBundler(entries: Entry[]): Plugin {
       });
     }
 
-    await filesGenerator.persistGeneratedFiles(
-      join(sourceFolder, PLUGIN_NAME),
-      (f) => resolvePath(f).replace(`${resolvePath("..")}/`, ""),
+    await filesGenerator.persistGeneratedFiles(PLUGIN_NAME, (f) =>
+      resolvePath(f).replace(`${resolvePath("..")}/`, ""),
     );
   }
 
