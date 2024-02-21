@@ -5,8 +5,8 @@
   "author": "Slee Woo",
   "license": "MIT",
   "engines": {
-    "node": "20.10",
-    "npm": "10.2"
+    "node": ">=20.10",
+    "npm": ">=10.2"
   },
   "files": [
     "pkg/*"
