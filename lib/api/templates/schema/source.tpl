@@ -1,9 +1,9 @@
 
-{{#typeDeclarations}}
+{{#typeLiterals}}
 {{.}}
-{{/typeDeclarations}}
+{{/typeLiterals}}
 
-{{#payloadParams}}
-export type {{id}} = {{type}};
-{{/payloadParams}}
+{{#payloadTypes}}
+export type {{id}} = {{text}};
+{{/payloadTypes}}
 

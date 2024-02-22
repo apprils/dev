@@ -1,22 +1,27 @@
 import { resolve, dirname, basename, join } from "path";
 
 import type { Plugin, ResolvedConfig } from "vite";
-import fsx from "fs-extra";
 import { glob } from "glob";
 import { parse } from "yaml";
+import fsx from "fs-extra";
 
 import { type BuildOptions, transform } from "esbuild";
 
-import type { Endpoint, PayloadParam, Route, TypeDeclaration } from "./@types";
+import type {
+  FetchDefinition,
+  TypeDeclaration,
+  Route,
+  TypeFile,
+} from "./@types";
 
-import { BANNER, render, renderToFile } from "../render";
 import { resolvePath, sanitizePath, filesGeneratorFactory } from "../base";
-import { extractTypedEndpoints } from "./ast";
-import { esbuilderFactory } from "./esbuilder";
+import { BANNER, render, renderToFile } from "../render";
+import { extractApiAssets } from "./ast";
+import { esbuildHandler } from "./esbuild";
+import { zodSchemaFactory } from "./zod";
 
 import routeTpl from "./templates/route.tpl";
 import routesTpl from "./templates/routes.tpl";
-import routesDtsTpl from "./templates/routes.d.tpl";
 import urlmapTpl from "./templates/urlmap.tpl";
 
 import fetchMdlTpl from "./templates/fetch/module.tpl";
@@ -28,7 +33,6 @@ import fetchHmrTpl from "./templates/fetch/hmr.tpl";
 const defaultTemplates = {
   route: routeTpl,
   routes: routesTpl,
-  routesDts: routesDtsTpl,
   urlmap: urlmapTpl,
 };
 
@@ -42,6 +46,9 @@ type Options = {
   fetchModulePrefix?: string;
   sourceFiles?: string | string[];
   templates?: Partial<Templates>;
+  importStringifyFrom?: string;
+  importZodErrorHandlerFrom?: string;
+  typeFiles?: Record<string, string[]>;
 };
 
 // aliases not reflected in fetch modules nor in urlmap
@@ -128,18 +135,18 @@ export async function vitePluginApprilApi(opts: Options): Promise<Plugin> {
     heuristicsFilter = (_r) => true,
     sourceFiles = "**/*_routes.yml",
     apiHmrFlushPatterns,
+    importStringifyFrom,
+    importZodErrorHandlerFrom,
   } = opts;
 
   const sourceFolder = basename(resolvePath());
 
-  const filesGenerator = filesGeneratorFactory();
-
   const outDirSuffix = "client";
 
-  let esbuilder: ReturnType<typeof esbuilderFactory>;
+  let esbuilder: ReturnType<typeof esbuildHandler>;
 
-  const fetchModulePrefix = `${opts.fetchModulePrefix?.trim() || "@fetch"}`;
-  const fetchBaseModule = `${fetchModulePrefix}::base`;
+  const fetchModulePrefix = opts.fetchModulePrefix?.trim() || "@fetch";
+  const fetchModuleBase = `${fetchModulePrefix}::base`;
 
   // ambient modules file.
   // do not use global import/export in module.d.tpl template!
@@ -150,14 +157,20 @@ export async function vitePluginApprilApi(opts: Options): Promise<Plugin> {
 
   const virtualModules: {
     fetch: Record<string, FetchModule>;
+    fetchGeneric: FetchModule[];
   } = {
     fetch: {},
+    get fetchGeneric() {
+      return Object.values(this.fetch).filter(
+        (e) => ![fetchModulePrefix, fetchModuleBase].includes(e.id),
+      );
+    },
   };
 
   const watchMap: {
-    srcFiles: Record<string, () => Promise<void>>;
     tplFiles: Record<string, () => Promise<void>>;
-    apiFiles: Record<string, () => Promise<void>>;
+    srcFiles: Record<string, () => Promise<void>>;
+    apiFiles: Record<string, (updatedFile?: string) => Promise<void>>;
   } = {
     srcFiles: {},
     tplFiles: {},
@@ -170,9 +183,6 @@ export async function vitePluginApprilApi(opts: Options): Promise<Plugin> {
 
   const templates = { ...defaultTemplates };
 
-  const routeMap: Record<string, Route> = {};
-  const aliasMap: Record<string, RouteAlias> = {};
-
   for (const [name, file] of Object.entries({ ...opts.templates }) as [
     name: keyof Templates,
     file: string,
@@ -183,51 +193,155 @@ export async function vitePluginApprilApi(opts: Options): Promise<Plugin> {
     };
   }
 
-  const fetchModuleFactory = (
-    route: Route,
-    assets: {
-      fetchModuleId: string;
-      typeDeclarations: TypeDeclaration[];
-      payloadParams: PayloadParam[];
-      endpoints: Endpoint[];
-    },
-  ): FetchModule => {
-    const { file, name } = route;
-    const { fetchModuleId: id } = assets;
-    return {
-      id,
-      name,
-      importName: id.replace(/\W/g, "_"),
-      watchFiles: [file],
-      code: render(fetchMdlTpl, {
-        apiDir,
-        sourceFolder,
-        fetchBaseModule,
-        ...route,
-        ...assets,
-      }),
-      hmrUpdate: `
-        (updated) => {
-          name = updated.name
-          path = updated.path
-          apiFactory = updated.apiFactory
-        }
-      `.trim(),
-    };
-  };
+  const typeFiles: Record<string, TypeFile> = {};
+
+  for (const [importPath, patterns] of Object.entries(opts.typeFiles || {})) {
+    const entries = await glob(patterns, {
+      cwd: resolvePath(),
+      withFileTypes: true, // glob also returns folders, we need only files
+    });
+
+    for (const file of entries.flatMap((e) =>
+      e.isFile() ? [e.fullpath()] : [],
+    )) {
+      typeFiles[file] = {
+        importPath,
+        file,
+        content: await fsx.readFile(file, "utf8"),
+        async rebuild() {
+          this.content = await fsx.readFile(this.file, "utf8");
+        },
+      };
+    }
+  }
 
   async function configResolved(config: ResolvedConfig) {
-    esbuilder = esbuilderFactory(esbuildConfig, {
+    const filesGenerator = filesGeneratorFactory(config);
+
+    esbuilder = esbuildHandler(esbuildConfig, {
       sourceFolder,
       apiDir,
       outDir: resolve(config.build.outDir, join("..", apiDir)),
       flushPatterns: apiHmrFlushPatterns,
-      alias: config.resolve.alias,
     });
 
     const patterns = Array.isArray(sourceFiles)
       ? [...sourceFiles]
       : [sourceFiles];
+
+    const routeMap: Record<string, Route> = {};
+    const aliasMap: Record<string, RouteAlias> = {};
+
+    const generateFetchModules = (
+      fetchModuleId: string,
+      route: Route,
+      assets: {
+        typeDeclarations: TypeDeclaration[];
+        fetchDefinitions: FetchDefinition[];
+      },
+    ) => {
+      const { file, name } = route;
+
+      virtualModules.fetch[fetchModuleId] = {
+        id: fetchModuleId,
+        name,
+        importName: fetchModuleId.replace(/\W/g, "_"),
+        watchFiles: [file],
+        code: render(fetchMdlTpl, {
+          apiDir,
+          sourceFolder,
+          fetchModuleBase,
+          importStringifyFrom,
+          ...route,
+          ...assets,
+        }),
+        hmrUpdate: `
+          (updated) => {
+            name = updated.name;
+            path = updated.path;
+            base = updated.base;
+            apiFactory = updated.apiFactory;
+          }
+        `.trim(),
+      };
+
+      virtualModules.fetch[fetchModuleBase] = {
+        id: fetchModuleBase,
+        name: fetchModuleBase,
+        importName: fetchModuleBase,
+        watchFiles: [resolvePath(fetchDtsFile)],
+        code: render(fetchBaseTpl, {}),
+      };
+
+      virtualModules.fetch[fetchModulePrefix] = {
+        id: fetchModulePrefix,
+        name: "Not supposed to be imported!",
+        importName: "Not supposed to be imported!",
+        watchFiles: [resolvePath(fetchDtsFile)],
+        code: render(fetchIdxTpl, {
+          apiDir,
+          sourceFolder,
+          modules: virtualModules.fetchGeneric,
+        }),
+      };
+    };
+
+    const generateFetchFiles = async () => {
+      const modules = virtualModules.fetchGeneric;
+
+      // generating file containing ambient fetch modules
+      await filesGenerator.generateFile(fetchDtsFile, {
+        template: fetchDtsTpl,
+        context: {
+          BANNER,
+          apiDir,
+          sourceFolder,
+          modules,
+          defaultModuleId: fetchModulePrefix,
+          fetchModuleBase,
+          fetchModuleBaseCode: virtualModules.fetch[fetchModuleBase].code,
+        },
+      });
+
+      // generating {apiDir}/_fetch.ts for access from outside sourceFolder,
+      // eg. when need access to @admin fetch modules from inside @front sourceFolder
+      await filesGenerator.generateFile(fetchIdxFile, {
+        template: fetchIdxTpl,
+        context: {
+          BANNER,
+          apiDir,
+          sourceFolder,
+          modules,
+        },
+      });
+    };
+
+    const generateRuntimeFiles = async () => {
+      // if moving this to esbuild plugin it wont react on source files updates
+      // (unless a new watcher added, which is undesirable)
+
+      const routesWithAlias = Object.values({
+        ...aliasMap,
+        ...routeMap, // routeMap can/should override aliasMap entries
+      });
+
+      const routesNoAlias = Object.values(routeMap);
+
+      for (const [outFile, template, routes] of [
+        ["_routes.ts", templates.routes, routesWithAlias],
+        ["_urlmap.ts", templates.urlmap, routesNoAlias],
+      ] as const) {
+        await filesGenerator.generateFile(join(apiDir, outFile), {
+          template,
+          context: {
+            BANNER,
+            apiDir,
+            sourceFolder,
+            routes,
+          },
+        });
+      }
+    };
 
     for (const pattern of patterns) {
       for (const file of await glob(pattern, { cwd: resolvePath(apiDir) })) {
@@ -269,16 +383,6 @@ export async function vitePluginApprilApi(opts: Options): Promise<Plugin> {
               path,
             });
 
-            const heuristicsEnabled = heuristicsFilter({ name, path, file });
-
-            const fetchModuleId = heuristicsEnabled
-              ? [fetchModulePrefix, name].join(":")
-              : undefined;
-
-            const schemaModuleId = heuristicsEnabled
-              ? [sourceFolder, importPath + fileExt, "schema"].join(":")
-              : undefined;
-
             routeMap[path] = {
               name,
               importName,
@@ -288,15 +392,16 @@ export async function vitePluginApprilApi(opts: Options): Promise<Plugin> {
               fileExt,
               meta,
               serialized,
-              fetchModuleId,
-              schemaModuleId,
+              middleworkerParams: "{}",
             };
 
-            for (const alias of typeof routeSetup?.alias === "string"
-              ? [routeSetup.alias]
-              : [...(routeSetup?.alias || [])]) {
-              const { importName, serialized, fetchModuleId, ...route } =
-                routeMap[path];
+            // biome-ignore format:
+            for (
+              const alias of typeof routeSetup?.alias === "string"
+                ? [ routeSetup.alias ]
+                : [ ...routeSetup?.alias || [] ]
+            ) {
+              const { importName, serialized, ...route } = routeMap[path];
               aliasMap[alias] = {
                 ...route,
                 name: alias,
@@ -305,117 +410,66 @@ export async function vitePluginApprilApi(opts: Options): Promise<Plugin> {
               };
             }
 
-            if (fetchModuleId) {
-              watchMap.apiFiles[file] = async () => {
-                const fileContent = await fsx.readFile(file, "utf8");
+            watchMap.apiFiles[file] = async (updatedFile?: string) => {
+              if (heuristicsFilter({ name, path, file })) {
+                const fetchModuleId = [fetchModulePrefix, name].join(":");
 
-                const assets = extractTypedEndpoints(fileContent, {
+                const {
+                  typeDeclarations,
+                  fetchDefinitions,
+                  middleworkerParams,
+                  middleworkerPayloadTypes,
+                } = await extractApiAssets(file, {
                   root: sourceFolder,
                   base: dirname(file.replace(resolvePath(), "")),
                 });
 
-                virtualModules.fetch[fetchModuleId] = fetchModuleFactory(
-                  routeMap[path],
-                  { fetchModuleId, ...assets },
+                routeMap[path].middleworkerParams = JSON.stringify(
+                  middleworkerParams || {},
                 );
 
-                const modules = Object.values(virtualModules.fetch).filter(
-                  (e) => ![fetchModulePrefix, fetchBaseModule].includes(e.id),
-                );
-
-                const fetchBaseModuleCode = render(fetchBaseTpl, {
-                  apiDir,
+                const zodSchemaPath = await zodSchemaFactory({
                   sourceFolder,
+                  path: importPath,
+                  middleworkerPayloadTypes,
+                  typeDeclarations,
+                  typeFiles: Object.values(typeFiles),
+                  importZodErrorHandlerFrom,
+                  cacheDir: config.cacheDir,
                 });
 
-                virtualModules.fetch[fetchBaseModule] = {
-                  id: fetchBaseModule,
-                  name: fetchBaseModule,
-                  importName: fetchBaseModule,
-                  watchFiles: [resolvePath(fetchDtsFile)],
-                  code: fetchBaseModuleCode,
-                };
+                if (zodSchemaPath) {
+                  routeMap[path].payloadValidation = {
+                    importName: `${importName}$PayloadValidation`,
+                    importPath: zodSchemaPath,
+                  };
+                }
 
-                virtualModules.fetch[fetchModulePrefix] = {
-                  id: fetchModulePrefix,
-                  name: "Not supposed to be imported!",
-                  importName: "Not supposed to be imported!",
-                  watchFiles: [resolvePath(fetchDtsFile)],
-                  code: render(fetchIdxTpl, {
-                    apiDir,
-                    sourceFolder,
-                    modules,
-                  }),
-                };
-
-                // (re)generating fetch files when some api file updated
-
-                // generating file containing ambient fetch modules
-                await filesGenerator.generateFile(fetchDtsFile, {
-                  template: fetchDtsTpl,
-                  context: {
-                    BANNER,
-                    apiDir,
-                    sourceFolder,
-                    modules,
-                    defaultModuleId: fetchModulePrefix,
-                    fetchBaseModule,
-                    fetchBaseModuleCode,
-                  },
+                generateFetchModules(fetchModuleId, routeMap[path], {
+                  typeDeclarations,
+                  fetchDefinitions,
                 });
+              }
 
-                // generating {apiDir}/_fetch.ts for access from outside sourceFolder,
-                // eg. when need access to @admin fetch modules from inside @front sourceFolder
-                await filesGenerator.generateFile(fetchIdxFile, {
-                  template: fetchIdxTpl,
-                  context: {
-                    BANNER,
-                    apiDir,
-                    sourceFolder,
-                    modules,
-                  },
-                });
-              };
-            }
+              if (updatedFile === file) {
+                await generateRuntimeFiles();
+                await generateFetchFiles();
+              }
 
-            const template = routeSetup?.template
-              ? await readTemplate(routeSetup?.template)
-              : templates.route;
+              const template = routeSetup?.template
+                ? await readTemplate(routeSetup?.template)
+                : templates.route;
 
-            await renderToFile(
-              file,
-              template,
-              {
-                ...routeSetup,
-                ...routeMap[path],
-              },
-              { overwrite: false },
-            );
-          }
-
-          // (re)generating base files when some source file updated
-
-          const routesWithAlias = Object.values({
-            ...aliasMap,
-            ...routeMap, // routeMap can/should override aliasMap entries
-          });
-
-          const routesNoAlias = Object.values(routeMap);
-
-          for (const [outFile, template, routes] of [
-            ["_routes.ts", templates.routes, routesWithAlias],
-            ["_routes.d.ts", templates.routesDts, routesWithAlias],
-            ["_urlmap.ts", templates.urlmap, routesNoAlias],
-          ] as const) {
-            await filesGenerator.generateFile(join(apiDir, outFile), {
-              template,
-              context: {
-                BANNER,
-                apiDir,
-                sourceFolder,
-                routes,
-              },
-            });
+              await renderToFile(
+                file,
+                template,
+                {
+                  ...routeSetup,
+                  ...routeMap[path],
+                },
+                { overwrite: false },
+              );
+            };
           }
         };
       }
@@ -432,16 +486,19 @@ export async function vitePluginApprilApi(opts: Options): Promise<Plugin> {
       }
     }
 
-    await filesGenerator.persistGeneratedFiles(
-      join(sourceFolder, PLUGIN_NAME),
-      (f) => join(sourceFolder, f),
+    // generate files only after apiFiles handlers finished
+    await generateRuntimeFiles();
+    await generateFetchFiles();
+
+    await filesGenerator.persistGeneratedFiles(PLUGIN_NAME, (f) =>
+      join(sourceFolder, f),
     );
   }
 
   return {
     name: PLUGIN_NAME,
 
-    async buildStart() {
+    async buildEnd() {
       await esbuilder?.build();
     },
 
@@ -509,27 +566,41 @@ export async function vitePluginApprilApi(opts: Options): Promise<Plugin> {
     configResolved,
 
     async configureServer(server) {
-      // using separate watcher cause api depends on a wider set of files
-      await esbuilder?.watch();
+      // using separate watcher cause api depends on a wider set of files.
+      // do not await esbuild watcher
+      esbuilder?.watch();
 
       for (const map of Object.values(watchMap)) {
         server.watcher.add(Object.keys(map));
       }
 
+      server.watcher.add(Object.keys(typeFiles));
+
+      const rebuildSrcFiles = async () => {
+        for (const handler of Object.values(watchMap.srcFiles)) {
+          await handler();
+        }
+      };
+
+      const rebuildApiFiles = async (file: string) => {
+        for (const handler of Object.values(watchMap.apiFiles)) {
+          await handler(file);
+        }
+      };
+
       server.watcher.on("change", async (file) => {
         if (watchMap.tplFiles[file]) {
           await watchMap.tplFiles[file]();
-          // regenerating everything when some template updated
-          for (const handler of [
-            ...Object.values(watchMap.srcFiles),
-            ...Object.values(watchMap.apiFiles),
-          ]) {
-            await handler();
-          }
+          await rebuildSrcFiles();
+          await rebuildApiFiles(file);
+        } else if (typeFiles[file]) {
+          await typeFiles[file].rebuild();
+          await rebuildSrcFiles();
+          await rebuildApiFiles(file);
         } else {
           for (const map of [watchMap.srcFiles, watchMap.apiFiles]) {
             if (map[file]) {
-              await map[file]();
+              await map[file](file);
             }
           }
         }

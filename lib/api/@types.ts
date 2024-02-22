@@ -1,33 +1,24 @@
-export const METHODS = ["get", "post", "put", "patch", "del"] as const;
-
-export type Method = (typeof METHODS)[number];
-
-export type MethodOverloadParam = {
-  scope: "params" | "payload" | "explicitPayload";
-  name: string;
-  type: string;
-  optional: boolean;
-};
-
-export type MethodOverload = {
-  method: Method;
-  params: MethodOverloadParam[];
-  renderedParams: string[];
+export type FetchDefinitionOverload = {
+  paramsType: { name: string; text: string };
+  payloadType: { name: string; text: string };
   bodyType: string;
 };
 
-export type PayloadParam = MethodOverloadParam & {
-  id: string;
-  method: Method;
-  params: string;
-};
-
-export type Endpoint = {
-  method: Method;
-  useMethod: string;
+export type FetchDefinition = {
+  method: string;
   httpMethod: string;
-  overloads: MethodOverload[];
+  overloads: FetchDefinitionOverload[];
   bodyType: string;
+};
+
+export type MiddleworkerParams = Record<number, string>;
+export type MiddleworkerPayloadTypes = Record<number, string>;
+
+export type TypeFile = {
+  importPath: string;
+  file: string;
+  content: string;
+  rebuild: () => Promise<void>;
 };
 
 export type TypeDeclaration = {
@@ -55,6 +46,6 @@ export type Route = {
   fileExt: string;
   meta: string;
   serialized: string;
-  fetchModuleId?: string;
-  schemaModuleId?: string;
+  middleworkerParams: string;
+  payloadValidation?: { importName: string; importPath: string };
 };

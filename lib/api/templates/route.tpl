@@ -3,7 +3,7 @@ import { get } from "@/api";
 
 export default [
 
-  get(async (ctx) => {
+  get(async (params, payload, ctx) => {
     return "Automatically generated route: [ {{name}} ]"
   }),
 

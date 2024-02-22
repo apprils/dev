@@ -11,80 +11,82 @@ import {
   useFetch,
 } from "@vueuse/core";
 
-import {
-  type PathChunk,
-  join,
-  urlBuilder,
-} from "~/helpers/url";
-
 import { baseurl, apiurl } from "{{sourceFolder}}/config";
-import { useMethodArgsMapper } from "{{fetchBaseModule}}";
+
+{{#importStringifyFrom}}
+import { stringify } from "{{importStringifyFrom}}";
+{{/importStringifyFrom}}
+
+import {
+  join, useFetchFactory, stringifyParams,
+  {{^importStringifyFrom}}
+  stringify,
+  {{/importStringifyFrom}}
+} from "{{fetchModuleBase}}";
 
 {{#typeDeclarations}}
 {{text}}
 {{/typeDeclarations}}
 
-let name = "{{name}}"
-let path = "{{path}}"
+let name = "{{name}}";
+let path = "{{path}}";
+let base = join(baseurl, apiurl, path);
 
-const base = join(baseurl, apiurl, path)
+let apiFactory = (api: FetchMapper) => {
 
-let apiFactory = function apiFactory(api: FetchMapper) {
-  {{#endpoints}}
-
+  {{#fetchDefinitions}}
   {{#overloads}}
   function {{method}}(
-    {{#renderedParams}}
-    {{.}},
-    {{/renderedParams}}
+    {{paramsType.name}}: {{paramsType.text}},
+    {{payloadType.name}}: import("{{fetchModuleBase}}").MaybeRef<{{payloadType.text}}>,
   ): Promise<{{bodyType}}>;
   {{/overloads}}
   function {{method}}(...args: unknown[]): Promise<{{bodyType}}> {
-    return api.{{method}}(...args)
+    return api.{{method}}(stringifyParams(args[0]), args[1] || {})
+  }
+  {{/fetchDefinitions}}
+
+  function useFetch(opts?: UseFetchOptions) {
+
+    {{#fetchDefinitions}}
+    {{#overloads}}
+    function {{method}}(
+      {{paramsType.name}}: {{paramsType.text}},
+      {{payloadType.name}}: import("{{fetchModuleBase}}").MaybeRef<{{payloadType.text}}>,
+    ): UseFetchReturn<{{bodyType}}>;
+    {{/overloads}}
+    function {{method}}(...args: unknown[]): UseFetchReturn<{{bodyType}}> {
+      return useFetchFactory(base, "{{method}}", args, opts)
+    }
+    {{/fetchDefinitions}}
+
+    return {
+      {{#fetchDefinitions}}
+      {{method}},
+      {{/fetchDefinitions}}
+    }
   }
 
-  {{! repeating overloads cause implementation should go right after overloads}}
-  {{#overloads}}
-  function {{useMethod}}(
-    {{#renderedParams}}
-    {{.}},
-    {{/renderedParams}}
-  ): UseFetchReturn<{{bodyType}}>;
-  function {{useMethod}}(
-    {{#renderedParams}}
-    {{.}},
-    {{/renderedParams}}
-    useFetchOptions?: UseFetchOptions,
-  ): UseFetchReturn<{{bodyType}}>;
-  {{/overloads}}
-  function {{useMethod}}(...args: unknown[]): Promise<{{bodyType}}> {
-    const [ apiArgs, useFetchOptions ] = useMethodArgsMapper(args)
-    return useFetch(urlBuilder(base, ...apiArgs), { method: "{{httpMethod}}" }, useFetchOptions)
-  }
-  {{/endpoints}}
+  {{#fetchDefinitions}}
+  useFetch.{{method}} = useFetch().{{method}}
+  {{/fetchDefinitions}}
 
-  {{#endpoints.length}}
   return {
-    {{#endpoints}}
+    {{#fetchDefinitions}}
     {{method}},
-    {{useMethod}},
-    {{/endpoints}}
+    {{/fetchDefinitions}}
+    useFetch,
   }
-  {{/endpoints.length}}
-
-  {{^endpoints.length}}
-  return api
-  {{/endpoints.length}}
 
 }
 
-export { name, path, apiFactory }
+export { name, path, base, apiFactory };
 
 const defaultExport = {
   get name() { return name },
   get base() { return base },
-  path: (...args: PathChunk[]) => urlBuilder(base, ...args),
-  withOptions: (opts: Options) => apiFactory(fetch(base, opts)),
+  path: (...args: (string|number)[]) => join(base, ...args),
+  createApi: (opts?: Options) => apiFactory(fetch(base, { stringify, ...opts })),
 }
 
 export default new Proxy(
@@ -98,7 +100,7 @@ export default new Proxy(
           : target[prop]
       }
 
-      return apiFactory(fetch(base))[prop]
+      return apiFactory(fetch(base, { stringify }))[prop]
 
     },
     set: () => false,
