@@ -109,11 +109,11 @@ some-route:
  * @param {object} [opts.templates={}] - custom templates
  */
 
-const PLUGIN_NAME = "vite-plugin-appril-api";
+const PLUGIN_NAME = "@appril:apiGeneratorPlugin";
 
 type WatchHandler = (file?: string) => Promise<void>;
 
-export async function vitePluginApprilApi(opts: Options): Promise<Plugin> {
+export async function apiGeneratorPlugin(opts: Options): Promise<Plugin> {
   const {
     esbuildConfig,
     apiDir = "api",

@@ -82,9 +82,9 @@ some-view:
  * @param {object} [opts.templates={}] - custom templates
  */
 
-const PLUGIN_NAME = "vite-plugin-appril-views";
+const PLUGIN_NAME = "@appril:viewsGeneratorPlugin";
 
-export function vitePluginApprilViews(opts?: Options): Plugin {
+export function viewsGeneratorPlugin(opts?: Options): Plugin {
   const {
     routesDir = "router",
     viewsDir = "views",

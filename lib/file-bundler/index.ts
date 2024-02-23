@@ -42,9 +42,9 @@ type ResolvedFile = {
   match: Path;
 };
 
-const PLUGIN_NAME = "vite-plugin-file-bundler";
+const PLUGIN_NAME = "@appril:fileBundlerPlugin";
 
-export function vitePluginFileBundler(entries: Entry[]): Plugin {
+export function fileBundlerPlugin(entries: Entry[]): Plugin {
   async function resolveFiles(
     config: ResolvedConfig,
     entry: Required<Entry>,

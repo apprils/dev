@@ -11,11 +11,13 @@ type File = {
   defineOn?: string;
 };
 
-export function vitePluginDefine(files: File[]): Plugin {
+const PLUGIN_NAME = "@appril:definePlugin";
+
+export function definePlugin(files: File[]): Plugin {
   const root = process.cwd();
 
   return {
-    name: "vite-plugin-define",
+    name: PLUGIN_NAME,
 
     async config() {
       const define: Record<string, unknown> = {};

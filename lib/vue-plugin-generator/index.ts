@@ -1,1 +1,1 @@
-export { default as vitePluginVuePluginsGlobal } from "./global";
+export * from "./global";

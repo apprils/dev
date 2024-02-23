@@ -31,9 +31,9 @@ type Options = {
 type TemplateName = keyof typeof defaultTemplates;
 type TemplateMap = Record<TemplateName, string>;
 
-const PLUGIN_NAME = "vite-plugin-vue-plugins-global";
+const PLUGIN_NAME = "@appril:vuePluginGeneratorGlobal";
 
-export default function globalPluginsGenerator(opts: Options): Plugin {
+export function vuePluginGeneratorGlobal(opts: Options): Plugin {
   const {
     plugins,
     outDir = "plugins/generated/global",
