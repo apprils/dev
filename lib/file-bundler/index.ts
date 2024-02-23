@@ -1,5 +1,3 @@
-import { basename, join } from "path";
-
 import fsx from "fs-extra";
 import { glob } from "glob";
 
@@ -47,8 +45,6 @@ type ResolvedFile = {
 const PLUGIN_NAME = "vite-plugin-file-bundler";
 
 export function vitePluginFileBundler(entries: Entry[]): Plugin {
-  const sourceFolder = basename(resolvePath());
-
   async function resolveFiles(
     config: ResolvedConfig,
     entry: Required<Entry>,
@@ -120,7 +116,7 @@ export function vitePluginFileBundler(entries: Entry[]): Plugin {
   }
 
   async function generateFiles(config: ResolvedConfig) {
-    const filesGenerator = filesGeneratorFactory(config);
+    const { generateFile } = filesGeneratorFactory(config);
 
     for (const _entry of entries) {
       const entry: Required<Entry> = {
@@ -146,7 +142,7 @@ export function vitePluginFileBundler(entries: Entry[]): Plugin {
         folders: entry.folders.map(folderMapper),
       });
 
-      await filesGenerator.generateFile(entry.outfile, {
+      await generateFile(entry.outfile, {
         template,
         context: {
           BANNER,
@@ -154,10 +150,6 @@ export function vitePluginFileBundler(entries: Entry[]): Plugin {
         },
       });
     }
-
-    await filesGenerator.persistGeneratedFiles(PLUGIN_NAME, (f) =>
-      resolvePath(f).replace(`${resolvePath("..")}/`, ""),
-    );
   }
 
   return {

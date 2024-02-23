@@ -7,9 +7,6 @@ import { renderToFile } from "./render";
 
 const CWD = process.cwd();
 
-// a folder inside cacheDir
-export const GENERATED_FILES_DIR = "generated-files-handler";
-
 export function resolvePath(...path: string[]): string {
   return resolve(CWD, join(...path));
 }
@@ -18,43 +15,45 @@ export function sanitizePath(path: string): string {
   return path.replace(/\.+\/+/g, "");
 }
 
-export function filesGeneratorFactory(config: ResolvedConfig) {
+export function filesGeneratorFactory(_config: ResolvedConfig) {
   const generatedFiles = new Set<string>();
+
+  type Render = { template: string; context: object };
+  type Options = { overwrite?: boolean };
 
   function generateFile<RenderContext = object>(
     outfile: string,
-    render: { template: string; context: RenderContext },
+    render: Render,
+    options?: Options,
   ): Promise<void>;
 
-  function generateFile(outfile: string, content: string): Promise<void>;
-
   function generateFile(
-    ...args: [string, string | { template: string; context: object }]
+    outfile: string,
+    content: string,
+    options?: Options,
+  ): Promise<void>;
+
+  async function generateFile(
+    ...args: [f: string, c: string | Render, o?: Options]
   ) {
-    const [outfile, rest] = args;
-    generatedFiles.add(outfile);
-    return typeof rest === "string"
-      ? fsx.outputFile(resolvePath(outfile), rest, "utf8")
-      : renderToFile(resolvePath(outfile), rest.template, rest.context);
+    const [outfile, content, options] = args;
+    const file = resolvePath(outfile);
+
+    generatedFiles.add(file);
+
+    if (options?.overwrite === false) {
+      if (await fsx.exists(file)) {
+        return;
+      }
+    }
+
+    typeof content === "string"
+      ? await fsx.outputFile(file, content, "utf8")
+      : await renderToFile(file, content.template, content.context);
   }
 
   return {
     generateFile,
-    persistGeneratedFiles(outFile: string, lineMapper?: (f: string) => string) {
-      return persistGeneratedFiles(
-        lineMapper ? [...generatedFiles].map(lineMapper) : [...generatedFiles],
-        { cacheDir: config.cacheDir, outFile },
-      );
-    },
+    generatedFiles,
   };
-}
-
-export function persistGeneratedFiles(
-  entries: string[],
-  { cacheDir, outFile }: { cacheDir: string; outFile: string },
-) {
-  return fsx.outputFile(
-    join(cacheDir, GENERATED_FILES_DIR, outFile),
-    [...entries].join("\n"),
-  );
 }

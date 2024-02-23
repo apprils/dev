@@ -9,8 +9,8 @@ import fsx from "fs-extra";
 
 import type { Route } from "./@types";
 
-import { resolvePath, sanitizePath } from "../base";
-import { BANNER, renderToFile } from "../render";
+import { resolvePath, sanitizePath, filesGeneratorFactory } from "../base";
+import { BANNER } from "../render";
 import { extractApiAssets } from "./ast";
 import { esbuildHandler } from "./esbuild";
 
@@ -207,19 +207,24 @@ export async function vitePluginApprilApi(opts: Options): Promise<Plugin> {
   // }
 
   async function configResolved(config: ResolvedConfig) {
+    const { generateFile } = filesGeneratorFactory(config);
+
     const cacheTsconfigFile = join(config.cacheDir, "tsconfig.json");
     const cacheTsconfigRelpath = join(sourceFolder, "tsconfig.json");
 
-    await renderToFile(cacheTsconfigFile, cacheTsconfigTpl, {
-      sourceTsconfig: join(
-        ...cacheTsconfigFile
-          .replace(resolvePath(".."), "")
-          .replace(/^\/+|\/+$/, "")
-          .replace(cacheTsconfigRelpath, "")
-          .split(/\/+/)
-          .map(() => ".."),
-        cacheTsconfigRelpath,
-      ),
+    await generateFile(cacheTsconfigFile, {
+      template: cacheTsconfigTpl,
+      context: {
+        sourceTsconfig: join(
+          ...cacheTsconfigFile
+            .replace(resolvePath(".."), "")
+            .replace(/^\/+|\/+$/, "")
+            .replace(cacheTsconfigRelpath, "")
+            .split(/\/+/)
+            .map(() => ".."),
+          cacheTsconfigRelpath,
+        ),
+      },
     });
 
     const fetchDir = join(config.cacheDir, "@fetch");
@@ -250,21 +255,30 @@ export async function vitePluginApprilApi(opts: Options): Promise<Plugin> {
         ["_routes.ts", templates.routes, routesWithAlias],
         ["_urlmap.ts", templates.urlmap, routesNoAlias],
       ] as const) {
-        await renderToFile(join(apiDir, outFile), template, {
-          BANNER,
-          apiDir,
-          sourceFolder,
-          routes,
+        await generateFile(join(apiDir, outFile), {
+          template,
+          context: {
+            BANNER,
+            apiDir,
+            sourceFolder,
+            routes,
+          },
         });
       }
 
-      await renderToFile(join(fetchDir, "@base.ts"), fetchBaseTpl, {
-        sourceFolder,
-        importStringifyFrom,
+      await generateFile(join(fetchDir, "@base.ts"), {
+        template: fetchBaseTpl,
+        context: {
+          sourceFolder,
+          importStringifyFrom,
+        },
       });
 
-      await renderToFile(join(fetchDir, "@index.ts"), fetchIndexTpl, {
-        routes: routesNoAlias,
+      await generateFile(join(fetchDir, "@index.ts"), {
+        template: fetchIndexTpl,
+        context: {
+          routes: routesNoAlias,
+        },
       });
     };
 
@@ -378,24 +392,25 @@ export async function vitePluginApprilApi(opts: Options): Promise<Plugin> {
               // }
             }
 
-            await renderToFile(
-              join(fetchDir, `${name}.ts`),
-              routeMap[path].fetchDefinitions
+            await generateFile(join(fetchDir, `${name}.ts`), {
+              template: routeMap[path].fetchDefinitions
                 ? fetchEnhancedTpl
                 : fetchSimpleTpl,
-              routeMap[path],
-            );
+              context: routeMap[path],
+            });
 
             const template = routeSetup?.template
               ? await readTemplate(routeSetup?.template)
               : templates.route;
 
-            await renderToFile(
+            await generateFile(
               file,
-              template,
               {
-                ...routeSetup,
-                ...routeMap[path],
+                template,
+                context: {
+                  ...routeSetup,
+                  ...routeMap[path],
+                },
               },
               { overwrite: false },
             );

@@ -1,4 +1,4 @@
-import { basename, join } from "path";
+import { join } from "path";
 import { readFile } from "fs/promises";
 
 import type { Plugin, ResolvedConfig } from "vite";
@@ -40,10 +40,8 @@ export default function globalPluginsGenerator(opts: Options): Plugin {
     templates: optedTemplates = {},
   } = { ...opts };
 
-  const sourceFolder = basename(resolvePath());
-
   async function generateFiles(config: ResolvedConfig) {
-    const filesGenerator = filesGeneratorFactory(config);
+    const { generateFile } = filesGeneratorFactory(config);
 
     // re-reading templates every time
     const templates: TemplateMap = { ...defaultTemplates };
@@ -82,7 +80,7 @@ export default function globalPluginsGenerator(opts: Options): Plugin {
         },
       );
 
-      await filesGenerator.generateFile(join(outDir, `${pluginName}.ts`), {
+      await generateFile(join(outDir, `${pluginName}.ts`), {
         template: templates.plugin,
         context: {
           BANNER,
@@ -99,7 +97,7 @@ export default function globalPluginsGenerator(opts: Options): Plugin {
       });
     }
 
-    await filesGenerator.generateFile(join(outDir, "env.d.ts"), {
+    await generateFile(join(outDir, "env.d.ts"), {
       template: templates.env,
       context: {
         BANNER,
@@ -108,7 +106,7 @@ export default function globalPluginsGenerator(opts: Options): Plugin {
       },
     });
 
-    await filesGenerator.generateFile(join(outDir, "index.ts"), {
+    await generateFile(join(outDir, "index.ts"), {
       template: templates.index,
       context: {
         BANNER,
@@ -116,10 +114,6 @@ export default function globalPluginsGenerator(opts: Options): Plugin {
         template: optedTemplates.index,
       },
     });
-
-    await filesGenerator.persistGeneratedFiles(PLUGIN_NAME, (f) =>
-      join(sourceFolder, f),
-    );
   }
 
   return {

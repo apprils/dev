@@ -98,7 +98,7 @@ export function vitePluginApprilViews(opts?: Options): Plugin {
   const viewsFile = join(viewsDir, "_views.yml");
 
   async function generateFiles(config: ResolvedConfig) {
-    const filesGenerator = filesGeneratorFactory(config);
+    const { generateFile } = filesGeneratorFactory(config);
 
     // re-reading files every time
     const templates: TemplateMap = { ...defaultTemplates };
@@ -177,7 +177,7 @@ export function vitePluginApprilViews(opts?: Options): Plugin {
       ["_routes.ts", templates.routes],
       ["_urlmap.ts", templates.urlmap],
     ]) {
-      await filesGenerator.generateFile(join(routesDir, outfile), {
+      await generateFile(join(routesDir, outfile), {
         template,
         context: {
           BANNER,
@@ -189,7 +189,7 @@ export function vitePluginApprilViews(opts?: Options): Plugin {
       });
     }
 
-    await filesGenerator.generateFile(join(routesDir, "_routes.d.ts"), {
+    await generateFile(join(routesDir, "_routes.d.ts"), {
       template: templates.typedRoutes,
       context: {
         BANNER,
@@ -197,7 +197,7 @@ export function vitePluginApprilViews(opts?: Options): Plugin {
       },
     });
 
-    await filesGenerator.generateFile(join(storesDir, "env.ts"), {
+    await generateFile(join(storesDir, "env.ts"), {
       template: templates.envStore,
       context: {
         BANNER,
@@ -218,15 +218,8 @@ export function vitePluginApprilViews(opts?: Options): Plugin {
         stringify(views.reduce(reducer, {})),
       ].join("\n");
 
-      await filesGenerator.generateFile(
-        join(apiDir, "_000_env_routes.yml"),
-        content,
-      );
+      await generateFile(join(apiDir, "_000_env_routes.yml"), content);
     }
-
-    await filesGenerator.persistGeneratedFiles(PLUGIN_NAME, (f) =>
-      join(sourceFolder, f),
-    );
   }
 
   return {
