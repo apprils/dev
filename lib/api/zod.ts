@@ -70,7 +70,7 @@ export async function zodSchemaFactory({
     getSchemaName: (e) => e,
   });
 
-  const outpath = join(cacheDir, "zod", path);
+  const outpath = join(cacheDir, "@zod", path);
 
   await renderToFile(`${outpath}.ts`, schemaModuleTpl, {
     path,

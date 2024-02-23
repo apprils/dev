@@ -171,9 +171,7 @@ function extractTypeDeclarations(
   const typeDeclarationsMap: Record<string, TypeDeclaration> = {};
 
   for (const node of [...importDeclarations]) {
-    let path = node.moduleSpecifier
-      .getText()
-      .replace(/^\W|\W$/g, "" /** removing quotes */);
+    let path = JSON.parse(node.moduleSpecifier.getText());
 
     if (/^\.\.?\/?/.test(path)) {
       path = join(root, resolve(base, path));
@@ -243,7 +241,6 @@ function paramsMapper(parameters: NodeArray<ParameterDeclaration>): {
   const fetchParamsType = {
     name: "params?",
     text: "Record<symbol, never>",
-    optional: true,
   };
 
   const fetchPayloadType = {
@@ -259,38 +256,36 @@ function paramsMapper(parameters: NodeArray<ParameterDeclaration>): {
         .match(parameter, "TypeLiteral")
         .filter((e) => e.parent === parameter);
 
-      if (typeExp) {
-        fetchParamsType.name = "params";
-        fetchParamsType.text = typeExp.getText();
-
-        const props = tsquery
-          .match(typeExp, "PropertySignature")
-          .filter((e) => e.parent === typeExp) as PropertySignature[];
-
-        pathParams = props
-          .map((prop) => {
-            const name = prop.name.getText();
-            const optional = prop.questionToken?.getText() ? true : false;
-            const wildcard = prop.type?.getText().endsWith("[]");
-            const literal = isLiteralParam(prop);
-
-            if (literal) {
-              return literal;
-            }
-
-            const chunks = [":", name];
-
-            if (optional) chunks.push("?");
-            else if (wildcard) chunks.push("*");
-
-            return chunks.join("");
-          })
-          .join("/");
-      } else {
-        // no type provided, only allow empty object
-        fetchParamsType.name = "params?";
-        fetchParamsType.optional = true;
+      if (!typeExp) {
+        continue;
       }
+
+      fetchParamsType.name = "params";
+      fetchParamsType.text = typeExp.getText();
+
+      const props = tsquery
+        .match(typeExp, "PropertySignature")
+        .filter((e) => e.parent === typeExp) as PropertySignature[];
+
+      pathParams = props
+        .map((prop) => {
+          const name = prop.name.getText();
+          const optional = prop.questionToken?.getText() ? true : false;
+          const wildcard = prop.type?.getText().endsWith("[]");
+          const literal = isLiteralParam(prop);
+
+          if (literal) {
+            return literal;
+          }
+
+          const chunks = [":", name];
+
+          if (optional) chunks.push("?");
+          else if (wildcard) chunks.push("*");
+
+          return chunks.join("");
+        })
+        .join("/");
     } else if (i === 1) {
       // processing payload parameter at position 1
       const [typeExp] = tsquery
@@ -302,13 +297,14 @@ function paramsMapper(parameters: NodeArray<ParameterDeclaration>): {
 
       payloadType = typeExp?.getText();
 
-      if (typeExp) {
-        // got payload type
-        fetchPayloadType.name = fetchParamsType.optional
-          ? "payload?" // params argument is optional, payload should be too
+      if (payloadType) {
+        // got payload type;
+        // if params argument is optional, payload should be too
+        fetchPayloadType.name = fetchParamsType.name.includes("?")
+          ? "payload?"
           : "payload";
 
-        fetchPayloadType.text = typeExp.getText();
+        fetchPayloadType.text = payloadType;
       } else {
         // no payload type provided, allow optional payload
         fetchPayloadType.name = "payload?";

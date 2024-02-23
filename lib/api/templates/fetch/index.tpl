@@ -1,14 +1,10 @@
-{{BANNER}}
 
-/// <reference path="./_fetch.d.ts" />
-
-{{#modules}}
-import {{importName}} from "{{id}}";
-{{/modules}}
+{{#routes}}
+import {{importName}} from "./{{name}}";
+{{/routes}}
 
 export default {
-  {{#modules}}
+  {{#routes}}
   "{{name}}": {{importName}},
-  {{/modules}}
+  {{/routes}}
 }
-

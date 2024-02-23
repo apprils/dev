@@ -48,4 +48,6 @@ export type Route = {
   serialized: string;
   middleworkerParams: string;
   payloadValidation?: { importName: string; importPath: string };
+  typeDeclarations?: TypeDeclaration[];
+  fetchDefinitions?: FetchDefinition[];
 };
