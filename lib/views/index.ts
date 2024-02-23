@@ -6,6 +6,7 @@ import { parse, stringify } from "yaml";
 
 import type { View, ExportedView } from "./@types";
 
+import defaults from "../defaults";
 import { resolvePath, sanitizePath, filesGeneratorFactory } from "../base";
 import { BANNER, renderToFile } from "../render";
 import { typedRoutes } from "./typed-routes";
@@ -86,10 +87,10 @@ const PLUGIN_NAME = "@appril:viewsGeneratorPlugin";
 
 export function viewsGeneratorPlugin(opts?: Options): Plugin {
   const {
-    routesDir = "router",
-    viewsDir = "views",
-    storesDir = "stores",
-    apiDir = "api",
+    routesDir = defaults.routesDir,
+    viewsDir = defaults.viewsDir,
+    storesDir = defaults.storesDir,
+    apiDir = defaults.apiDir,
     templates: optedTemplates = {},
   } = { ...opts };
 

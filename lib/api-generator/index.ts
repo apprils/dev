@@ -1,7 +1,6 @@
-import { resolve, dirname, basename, join } from "path";
+import { dirname, basename, join } from "path";
 
 import type { FSWatcher, Plugin, ResolvedConfig } from "vite";
-import type { BuildOptions } from "esbuild";
 
 import { glob } from "glob";
 import { parse } from "yaml";
@@ -9,10 +8,10 @@ import fsx from "fs-extra";
 
 import type { Route } from "./@types";
 
+import defaults from "../defaults";
 import { resolvePath, sanitizePath, filesGeneratorFactory } from "../base";
 import { BANNER } from "../render";
 import { extractApiAssets } from "./ast";
-import { esbuildHandler } from "./esbuild";
 
 import routeTpl from "./templates/route.tpl";
 import routesTpl from "./templates/routes.tpl";
@@ -34,9 +33,7 @@ const defaultTemplates = {
 type Templates = Record<keyof typeof defaultTemplates, string>;
 
 type Options = {
-  esbuildConfig: BuildOptions;
   apiDir?: string;
-  apiHmrFlushPatterns?: RegExp[];
   heuristicsFilter?: (r: Pick<Route, "name" | "path" | "file">) => boolean;
   sourceFiles?: string | string[];
   templates?: Partial<Templates>;
@@ -101,7 +98,6 @@ some-route:
  *    - {apiDir}/_urlmap.ts
  *
  * @param {object} [opts={}] - options
- * @param {string} [opts.esbuildConfig]
  * @param {string} [opts.apiDir="api"] - path to api folder.
  *    where to place generated files
  * @param {string} [opts.sourceFiles="**\/*_routes.yml"] - yaml files glob pattern
@@ -115,19 +111,15 @@ type WatchHandler = (file?: string) => Promise<void>;
 
 export async function apiGeneratorPlugin(opts: Options): Promise<Plugin> {
   const {
-    esbuildConfig,
-    apiDir = "api",
+    apiDir = defaults.apiDir,
     heuristicsFilter = (_r) => true,
     sourceFiles = "**/*_routes.yml",
-    apiHmrFlushPatterns,
     importStringifyFrom,
   } = opts;
 
   const sourceFolder = basename(resolvePath());
 
   const outDirSuffix = "client";
-
-  let esbuilder: ReturnType<typeof esbuildHandler>;
 
   const watchMap: {
     tplFiles: Record<string, WatchHandler>;
@@ -228,13 +220,6 @@ export async function apiGeneratorPlugin(opts: Options): Promise<Plugin> {
     });
 
     const fetchDir = join(config.cacheDir, "@fetch");
-
-    esbuilder = esbuildHandler(esbuildConfig, {
-      sourceFolder,
-      apiDir,
-      outDir: resolve(config.build.outDir, join("..", apiDir)),
-      flushPatterns: apiHmrFlushPatterns,
-    });
 
     const patterns = Array.isArray(sourceFiles)
       ? [...sourceFiles]
@@ -430,10 +415,6 @@ export async function apiGeneratorPlugin(opts: Options): Promise<Plugin> {
   return {
     name: PLUGIN_NAME,
 
-    async buildEnd() {
-      await esbuilder?.build();
-    },
-
     config(config) {
       if (!config.build?.outDir) {
         throw new Error("Config is missing build.outDir");
@@ -447,11 +428,8 @@ export async function apiGeneratorPlugin(opts: Options): Promise<Plugin> {
 
     configResolved,
 
-    async configureServer(server) {
+    configureServer(server) {
       armWatchHandlers(server.watcher);
-
-      // using separate watcher cause api depends on a wider set of files
-      await esbuilder?.watch();
     },
   };
 }
