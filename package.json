@@ -27,9 +27,8 @@
     "lint": "biome lint ./lib",
     "// ✨ build": "",
     "esbundler": "func() { e=$1; shift; esbuild $e --bundle --platform=node --target=node20 --packages=external --loader:.tpl=text $*; }; func",
-    "prebuild": "mkdir -p pkg; find pkg -type f -exec rm -fv {} \\;",
-    "build": "set -e; npm run lint; npm run esbundler -- lib/index.ts --sourcemap=inline --outdir=pkg",
-    "postbuild": "tsc"
+    "prebuild": "set -e; npm run lint; tsc; mkdir -p pkg; find pkg -type f -exec rm -fv {} \\;",
+    "build": "npm run esbundler -- lib/index.ts --sourcemap=inline --outdir=pkg"
   },
   "prettier": "@appril/prettier-config",
   "release-it": {
