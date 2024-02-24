@@ -1,6 +1,5 @@
 import { join, resolve } from "path";
 
-import { type ResolvedConfig } from "vite";
 import fsx from "fs-extra";
 
 import { renderToFile } from "./render";
@@ -15,7 +14,7 @@ export function sanitizePath(path: string): string {
   return path.replace(/\.+\/+/g, "");
 }
 
-export function filesGeneratorFactory(_config: ResolvedConfig) {
+export function filesGeneratorFactory() {
   const generatedFiles = new Set<string>();
 
   type Render = { template: string; context: object };

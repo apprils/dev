@@ -6,7 +6,7 @@ import { parse, stringify } from "yaml";
 
 import type { View, ExportedView } from "./@types";
 
-import defaults from "../defaults";
+import { defaults } from "../defaults";
 import { resolvePath, sanitizePath, filesGeneratorFactory } from "../base";
 import { BANNER, renderToFile } from "../render";
 import { typedRoutes } from "./typed-routes";
@@ -99,7 +99,7 @@ export function viewsGeneratorPlugin(opts?: Options): Plugin {
   const viewsFile = join(viewsDir, "_views.yml");
 
   async function generateFiles(config: ResolvedConfig) {
-    const { generateFile } = filesGeneratorFactory(config);
+    const { generateFile } = filesGeneratorFactory();
 
     // re-reading files every time
     const templates: TemplateMap = { ...defaultTemplates };

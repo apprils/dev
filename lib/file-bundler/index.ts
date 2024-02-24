@@ -116,7 +116,7 @@ export function fileBundlerPlugin(entries: Entry[]): Plugin {
   }
 
   async function generateFiles(config: ResolvedConfig) {
-    const { generateFile } = filesGeneratorFactory(config);
+    const { generateFile } = filesGeneratorFactory();
 
     for (const _entry of entries) {
       const entry: Required<Entry> = {

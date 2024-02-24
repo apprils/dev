@@ -4,9 +4,9 @@ import { generate } from "ts-to-zod";
 
 import type {
   MiddleworkerPayloadTypes,
-  TypeDeclaration,
   TypeFile,
-} from "./@types";
+  TypeDeclaration,
+} from "../@types";
 
 import { resolvePath } from "../base";
 import { render, renderToFile } from "../render";

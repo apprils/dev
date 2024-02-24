@@ -12,7 +12,6 @@ export const routes = {
   "{{name}}": {
     name: "{{name}}",
     path: "{{path}}",
-    file: "{{file}}",
     meta: {{importName}}$meta,
   },
 {{/routes}}

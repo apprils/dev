@@ -41,7 +41,7 @@ export function vuePluginGeneratorGlobal(opts: Options): Plugin {
   } = { ...opts };
 
   async function generateFiles(config: ResolvedConfig) {
-    const { generateFile } = filesGeneratorFactory(config);
+    const { generateFile } = filesGeneratorFactory();
 
     // re-reading templates every time
     const templates: TemplateMap = { ...defaultTemplates };

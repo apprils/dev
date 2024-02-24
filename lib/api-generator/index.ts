@@ -1,26 +1,19 @@
-import { dirname, basename, join } from "path";
+import { basename, join } from "path";
 
 import type { FSWatcher, Plugin, ResolvedConfig } from "vite";
 
-import { glob } from "glob";
-import { parse } from "yaml";
 import fsx from "fs-extra";
 
-import type { Route } from "./@types";
+import type { Route } from "../@types";
 
-import defaults from "../defaults";
-import { resolvePath, sanitizePath, filesGeneratorFactory } from "../base";
+import { defaults, privateDefaults } from "../defaults";
+import { resolvePath, filesGeneratorFactory } from "../base";
+import { sourceFilesParsers } from "../api";
 import { BANNER } from "../render";
-import { extractApiAssets } from "./ast";
 
 import routeTpl from "./templates/route.tpl";
 import routesTpl from "./templates/routes.tpl";
 import urlmapTpl from "./templates/urlmap.tpl";
-
-import fetchBaseTpl from "./templates/fetch/base.tpl";
-import fetchEnhancedTpl from "./templates/fetch/enhanced.tpl";
-import fetchSimpleTpl from "./templates/fetch/simple.tpl";
-import fetchIndexTpl from "./templates/fetch/index.tpl";
 
 import cacheTsconfigTpl from "./templates/tsconfig.tpl";
 
@@ -34,24 +27,13 @@ type Templates = Record<keyof typeof defaultTemplates, string>;
 
 type Options = {
   apiDir?: string;
-  heuristicsFilter?: (r: Pick<Route, "name" | "path" | "file">) => boolean;
-  sourceFiles?: string | string[];
   templates?: Partial<Templates>;
-  importStringifyFrom?: string;
   importZodErrorHandlerFrom?: string;
   typeFiles?: Record<string, string[]>;
 };
 
-// aliases not reflected in fetch modules nor in urlmap
-type RouteAlias = Omit<Route, "serialized" | "fetchModuleId">;
-
-type RouteSetup = {
-  name?: string;
-  alias?: string | string[];
-  file?: string;
-  template?: string;
-  meta?: Record<string, unknown>;
-};
+// aliases are not reflected in in urlmap
+type RouteAlias = Omit<Route, "serialized">;
 
 /** {apiDir}/_routes.yml schema:
 
@@ -98,10 +80,7 @@ some-route:
  *    - {apiDir}/_urlmap.ts
  *
  * @param {object} [opts={}] - options
- * @param {string} [opts.apiDir="api"] - path to api folder.
- *    where to place generated files
- * @param {string} [opts.sourceFiles="**\/*_routes.yml"] - yaml files glob pattern
- *    files containing route definitions, resolved relative to apiDir
+ * @param {string} [opts.apiDir="api"] - path to api folder where to place generated files
  * @param {object} [opts.templates={}] - custom templates
  */
 
@@ -110,38 +89,38 @@ const PLUGIN_NAME = "@appril:apiGeneratorPlugin";
 type WatchHandler = (file?: string) => Promise<void>;
 
 export async function apiGeneratorPlugin(opts: Options): Promise<Plugin> {
-  const {
-    apiDir = defaults.apiDir,
-    heuristicsFilter = (_r) => true,
-    sourceFiles = "**/*_routes.yml",
-    importStringifyFrom,
-  } = opts;
+  const { apiDir = defaults.apiDir } = opts;
 
   const sourceFolder = basename(resolvePath());
 
   const outDirSuffix = "client";
 
+  const { generateFile } = filesGeneratorFactory();
+
+  const routeMap: Record<string, Route> = {};
+  const aliasMap: Record<string, RouteAlias> = {};
+
   const watchMap: {
     tplFiles: Record<string, WatchHandler>;
     srcFiles: Record<string, WatchHandler>;
-    apiFiles: Record<string, WatchHandler>;
   } = {
-    srcFiles: {},
     tplFiles: {},
-    apiFiles: {},
+    srcFiles: {},
   };
 
   const runWatchHandlers = async (...keys: (keyof typeof watchMap)[]) => {
     for (const handler of keys.flatMap((k) => Object.values(watchMap[k]))) {
       await handler();
     }
+    if (keys.includes("srcFiles")) {
+      await generateIndexFiles();
+    }
   };
 
   const runWatchHandler = async (file: string) => {
     if (watchMap.tplFiles[file]) {
       await watchMap.tplFiles[file]();
-      // rebuilding everything when some templarte updated;
-      // (apiFiles handlers would be triggered by srcFiles handlers)
+      // rebuilding everything else when some template updated
       await runWatchHandlers("srcFiles");
       return;
     }
@@ -198,9 +177,31 @@ export async function apiGeneratorPlugin(opts: Options): Promise<Plugin> {
   //   }
   // }
 
-  async function configResolved(config: ResolvedConfig) {
-    const { generateFile } = filesGeneratorFactory(config);
+  const generateIndexFiles = async () => {
+    const routesWithAlias = Object.values({
+      ...aliasMap,
+      ...routeMap, // routeMap can/should override aliasMap entries
+    });
 
+    const routesNoAlias = Object.values(routeMap);
+
+    for (const [outFile, template, routes] of [
+      [privateDefaults.routesFile, templates.routes, routesWithAlias],
+      [privateDefaults.urlmapFile, templates.urlmap, routesNoAlias],
+    ] as const) {
+      await generateFile(join(apiDir, outFile), {
+        template,
+        context: {
+          BANNER,
+          apiDir,
+          sourceFolder,
+          routes,
+        },
+      });
+    }
+  };
+
+  async function configResolved(config: ResolvedConfig) {
     const cacheTsconfigFile = join(config.cacheDir, "tsconfig.json");
     const cacheTsconfigRelpath = join(sourceFolder, "tsconfig.json");
 
@@ -219,116 +220,12 @@ export async function apiGeneratorPlugin(opts: Options): Promise<Plugin> {
       },
     });
 
-    const fetchDir = join(config.cacheDir, "@fetch");
+    for (const { file, parser } of await sourceFilesParsers({ apiDir })) {
+      watchMap.srcFiles[file] = async () => {
+        for (const { setup, route, aliases } of await parser()) {
+          const { path } = route;
 
-    const patterns = Array.isArray(sourceFiles)
-      ? [...sourceFiles]
-      : [sourceFiles];
-
-    const routeMap: Record<string, Route> = {};
-    const aliasMap: Record<string, RouteAlias> = {};
-
-    const generateIndexFiles = async () => {
-      const routesWithAlias = Object.values({
-        ...aliasMap,
-        ...routeMap, // routeMap can/should override aliasMap entries
-      });
-
-      const routesNoAlias = Object.values(routeMap);
-
-      for (const [outFile, template, routes] of [
-        ["_routes.ts", templates.routes, routesWithAlias],
-        ["_urlmap.ts", templates.urlmap, routesNoAlias],
-      ] as const) {
-        await generateFile(join(apiDir, outFile), {
-          template,
-          context: {
-            BANNER,
-            apiDir,
-            sourceFolder,
-            routes,
-          },
-        });
-      }
-
-      await generateFile(join(fetchDir, "@base.ts"), {
-        template: fetchBaseTpl,
-        context: {
-          sourceFolder,
-          importStringifyFrom,
-        },
-      });
-
-      await generateFile(join(fetchDir, "@index.ts"), {
-        template: fetchIndexTpl,
-        context: {
-          routes: routesNoAlias,
-        },
-      });
-    };
-
-    const resolvedSourceFiles = new Set<string>();
-
-    // patterns are static, not watching
-    for (const pattern of patterns) {
-      for (const file of await glob(pattern, { cwd: resolvePath(apiDir) })) {
-        resolvedSourceFiles.add(resolvePath(apiDir, file));
-      }
-    }
-
-    for (const srcFile of resolvedSourceFiles) {
-      watchMap.srcFiles[srcFile] = async () => {
-        const fileContent = await fsx.readFile(srcFile, "utf8");
-        const routeDefinitions = parse(fileContent);
-
-        for (const [routePath, routeSetup] of Object.entries(
-          routeDefinitions,
-        ) as [path: string, setup: RouteSetup | undefined][]) {
-          const name = sanitizePath(routeSetup?.name || routePath).replace(
-            /\/+$/,
-            "",
-          );
-
-          const importPath = routeSetup?.file
-            ? sanitizePath(routeSetup.file.replace(/\.[^.]+$/, ""))
-            : join(apiDir, name);
-
-          const importName = importPath.replace(/\W/g, "_");
-
-          // path should start with a slash
-          const path = join("/", name);
-
-          const fileExt = routeSetup?.file
-            ? routeSetup.file.replace(/.+(\.[^.]+)$/, "$1")
-            : /\/$/.test(routePath)
-              ? "/index.ts"
-              : ".ts";
-
-          const file = resolvePath(importPath + fileExt);
-
-          const meta = JSON.stringify(routeSetup?.meta || {});
-
-          const serialized = JSON.stringify({
-            name,
-            path,
-          });
-
-          routeMap[path] = {
-            name,
-            importName,
-            path,
-            importPath,
-            file,
-            fileExt,
-            meta,
-            serialized,
-            middleworkerParams: "{}",
-          };
-
-          // biome-ignore format:
-          const aliases = typeof routeSetup?.alias === "string"
-            ? [ routeSetup.alias ]
-            : [ ...routeSetup?.alias || [] ]
+          routeMap[path] = route;
 
           for (const alias of aliases) {
             const { importName, serialized, ...route } = routeMap[path];
@@ -340,75 +237,67 @@ export async function apiGeneratorPlugin(opts: Options): Promise<Plugin> {
             };
           }
 
-          watchMap.apiFiles[file] = async () => {
-            if (heuristicsFilter({ name, path, file })) {
-              const {
-                typeDeclarations,
-                fetchDefinitions,
-                middleworkerParams,
-                middleworkerPayloadTypes,
-              } = await extractApiAssets(file, {
-                root: sourceFolder,
-                base: dirname(file.replace(resolvePath(), "")),
-              });
+          // if (heuristicsFilter({ name, path, file })) {
+          //   const {
+          //     typeDeclarations,
+          //     fetchDefinitions,
+          //     middleworkerParams,
+          //     middleworkerPayloadTypes,
+          //   } = await extractApiAssets(file, {
+          //     root: sourceFolder,
+          //     base: dirname(file.replace(resolvePath(), "")),
+          //   });
+          //
+          //   routeMap[path].middleworkerParams = JSON.stringify(
+          //     middleworkerParams || {},
+          //   );
+          //
+          //   routeMap[path].typeDeclarations = typeDeclarations;
+          //   routeMap[path].fetchDefinitions = fetchDefinitions;
+          // const zodSchemaPath = await zodSchemaFactory({
+          //   sourceFolder,
+          //   path: importPath,
+          //   middleworkerPayloadTypes,
+          //   typeDeclarations,
+          //   typeFiles: Object.values(typeFiles),
+          //   importZodErrorHandlerFrom,
+          //   cacheDir: config.cacheDir,
+          // });
+          //
+          // if (zodSchemaPath) {
+          //   routeMap[path].payloadValidation = {
+          //     importName: `${importName}$PayloadValidation`,
+          //     importPath: zodSchemaPath,
+          //   };
+          // }
+          // }
 
-              routeMap[path].middleworkerParams = JSON.stringify(
-                middleworkerParams || {},
-              );
+          // await generateFile(join(fetchDir, `${name}.ts`), {
+          //   template: routeMap[path].fetchDefinitions
+          //     ? fetchEnhancedTpl
+          //     : fetchSimpleTpl,
+          //   context: routeMap[path],
+          // });
 
-              routeMap[path].typeDeclarations = typeDeclarations;
-              routeMap[path].fetchDefinitions = fetchDefinitions;
+          const template = setup?.template
+            ? await readTemplate(setup?.template)
+            : templates.route;
 
-              // const zodSchemaPath = await zodSchemaFactory({
-              //   sourceFolder,
-              //   path: importPath,
-              //   middleworkerPayloadTypes,
-              //   typeDeclarations,
-              //   typeFiles: Object.values(typeFiles),
-              //   importZodErrorHandlerFrom,
-              //   cacheDir: config.cacheDir,
-              // });
-              //
-              // if (zodSchemaPath) {
-              //   routeMap[path].payloadValidation = {
-              //     importName: `${importName}$PayloadValidation`,
-              //     importPath: zodSchemaPath,
-              //   };
-              // }
-            }
-
-            await generateFile(join(fetchDir, `${name}.ts`), {
-              template: routeMap[path].fetchDefinitions
-                ? fetchEnhancedTpl
-                : fetchSimpleTpl,
-              context: routeMap[path],
-            });
-
-            const template = routeSetup?.template
-              ? await readTemplate(routeSetup?.template)
-              : templates.route;
-
-            await generateFile(
-              file,
-              {
-                template,
-                context: {
-                  ...routeSetup,
-                  ...routeMap[path],
-                },
+          await generateFile(
+            file,
+            {
+              template,
+              context: {
+                ...setup,
+                ...routeMap[path],
               },
-              { overwrite: false },
-            );
-          };
-
-          await watchMap.apiFiles[file]();
+            },
+            { overwrite: false },
+          );
         }
-
-        await generateIndexFiles();
       };
     }
 
-    // srcFiles handlers would trigger apiFiles handlers
     await runWatchHandlers("tplFiles", "srcFiles");
   }
 

@@ -4,7 +4,7 @@ import type { Plugin } from "vite";
 import type { BuildOptions } from "esbuild";
 
 import { resolvePath } from "../base";
-import defaults from "../defaults";
+import { defaults } from "../defaults";
 import { esbuildHandler } from "./esbuild";
 
 type Options = {

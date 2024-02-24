@@ -27,8 +27,11 @@
     "lint": "biome lint ./lib",
     "// ✨ build": "",
     "esbundler": "func() { e=$1; shift; esbuild $e --bundle --platform=node --target=node20 --packages=external --loader:.tpl=text $*; }; func",
-    "prebuild": "set -e; npm run lint; tsc; mkdir -p pkg; find pkg -type f -exec rm -fv {} \\;",
-    "build": "npm run esbundler -- lib/index.ts --sourcemap=inline --outdir=pkg"
+    "build:fetch-generator-worker": "npm run esbundler -- lib/fetch-generator/worker.ts --outfile=pkg/fetch-generator-worker.js",
+    "build:workers": "set -e; for e in fetch-generator; do npm run build:$e-worker; done",
+    "build:prepare": "mkdir -p pkg; find pkg -type f -exec rm -fv {} \\;",
+    "prebuild": "set -e; npm run build:prepare; npm run lint; tsc",
+    "build": "set -e; npm run build:workers; npm run esbundler -- lib/index.ts --sourcemap=inline --outdir=pkg"
   },
   "prettier": "@appril/prettier-config",
   "release-it": {
