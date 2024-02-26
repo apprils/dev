@@ -1,6 +1,7 @@
 import { dirname, basename, join } from "path";
 
 import type { FSWatcher, Plugin, ResolvedConfig } from "vite";
+import fsx from "fs-extra";
 
 import { defaults, privateDefaults } from "../defaults";
 import { resolvePath } from "../base";
@@ -106,6 +107,33 @@ export async function fetchGeneratorPlugin(opts: Options): Promise<Plugin> {
 
   async function configResolved(config: ResolvedConfig) {
     fetchDir = join(config.cacheDir, privateDefaults.cache.fetchDir);
+
+    const tsconfig = JSON.parse(
+      await fsx.readFile(resolvePath("tsconfig.json"), "utf8"),
+    );
+
+    if (!tsconfig.compilerOptions.paths?.["@fetch/*"]) {
+      await fsx.outputFile(
+        resolvePath("tsconfig.json"),
+        JSON.stringify(
+          {
+            ...tsconfig,
+            compilerOptions: {
+              ...tsconfig.compilerOptions,
+              paths: {
+                ...tsconfig.compilerOptions.paths,
+                "@fetch/*": [
+                  join(fetchDir.replace(resolvePath(".."), ".."), "*"),
+                ],
+              },
+            },
+          },
+          null,
+          2,
+        ),
+        "utf8",
+      );
+    }
 
     for (const { file, parser } of await sourceFilesParsers({ apiDir })) {
       watchMap.srcFiles[file] = async () => {
