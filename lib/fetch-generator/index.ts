@@ -2,7 +2,7 @@ import { dirname, basename, join } from "path";
 
 import type { FSWatcher, Plugin, ResolvedConfig } from "vite";
 
-import { defaults } from "../defaults";
+import { defaults, privateDefaults } from "../defaults";
 import { resolvePath } from "../base";
 import { sourceFilesParsers } from "../api";
 import workerPool from "../worker-pool";
@@ -105,7 +105,7 @@ export async function fetchGeneratorPlugin(opts: Options): Promise<Plugin> {
   };
 
   async function configResolved(config: ResolvedConfig) {
-    fetchDir = join(config.cacheDir, "@fetch");
+    fetchDir = join(config.cacheDir, privateDefaults.cache.fetchDir);
 
     for (const { file, parser } of await sourceFilesParsers({ apiDir })) {
       watchMap.srcFiles[file] = async () => {

@@ -8,4 +8,7 @@ export const defaults = {
 export const privateDefaults = {
   routesFile: "_routes.ts",
   urlmapFile: "_urlmap.ts",
+  cache: {
+    fetchDir: "@fetch",
+  },
 };
