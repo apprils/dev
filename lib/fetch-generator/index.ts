@@ -1,14 +1,13 @@
 import { dirname, basename, join } from "path";
-import { Worker } from "worker_threads";
 
 import type { FSWatcher, Plugin, ResolvedConfig } from "vite";
 
 import { defaults } from "../defaults";
 import { resolvePath } from "../base";
 import { sourceFilesParsers } from "../api";
+import workerPool from "../worker-pool";
 
 import type { Route } from "../@types";
-import type { WorkerData } from "./@types";
 
 type Options = {
   apiDir?: string;
@@ -30,8 +29,9 @@ export async function fetchGeneratorPlugin(opts: Options): Promise<Plugin> {
     importStringifyFrom,
   } = opts;
 
-  const sourceFolder = basename(resolvePath());
   let fetchDir: string;
+
+  const sourceFolder = basename(resolvePath());
 
   const routeMap: Record<string, Route> = {};
 
@@ -41,33 +41,23 @@ export async function fetchGeneratorPlugin(opts: Options): Promise<Plugin> {
     srcFiles: {},
   };
 
-  const createWorker = () => {
-    return new Worker(join(__dirname, "fetch-generator-worker.js"));
+  const generateIndexFiles = () => {
+    return workerPool.fetchGenerator.generateIndexFiles({
+      fetchDir,
+      routes: Object.values(routeMap).filter(filter),
+      sourceFolder,
+      importStringifyFrom,
+    });
   };
 
-  let worker: InstanceType<typeof Worker> | undefined = createWorker();
-  let workerExits = 0;
-
-  worker.on("error", (error: unknown) => {
-    console.error(`[ ${PLUGIN_NAME} ]: Worker Error`);
-    console.log(error);
-  });
-
-  worker.on("exit", (code) => {
-    workerExits += 1;
-    process.stdout.write(
-      `\n[ ${PLUGIN_NAME} ]: Worker Exited with code ${code}; `,
-    );
-    if (workerExits <= 100) {
-      console.log("Restarting...");
-      worker = createWorker();
-    } else {
-      console.error(`Worker exited ${workerExits} times, giving up`);
-      worker = undefined;
-    }
-  });
-
-  const runWorker = (msg: WorkerData) => worker?.postMessage(msg);
+  const generateRouteAssets = (route: Route) => {
+    return workerPool.fetchGenerator.generateRouteAssets({
+      fetchDir,
+      route,
+      root: sourceFolder,
+      base: dirname(route.file.replace(resolvePath(), "")),
+    });
+  };
 
   const runWatchHandlers = async (...keys: (keyof typeof watchMap)[]) => {
     for (const handler of keys.flatMap((k) => Object.values(watchMap[k]))) {
@@ -75,28 +65,15 @@ export async function fetchGeneratorPlugin(opts: Options): Promise<Plugin> {
     }
 
     if (keys.includes("srcFiles")) {
-      runWorker({
-        fetchDir,
-        generateIndexFiles: {
-          routes: Object.values(routeMap),
-          sourceFolder,
-          importStringifyFrom,
-        },
-      });
+      await generateIndexFiles();
     }
   };
 
   const runWatchHandler = async (file: string) => {
     if (routeMap[file]) {
+      // some route updated, rebuilding fetch assets
       if (filter(routeMap[file])) {
-        runWorker({
-          fetchDir,
-          generateRouteAssets: {
-            route: routeMap[file],
-            root: sourceFolder,
-            base: dirname(file.replace(resolvePath(), "")),
-          },
-        });
+        await generateRouteAssets(routeMap[file]);
       }
       return;
     }
@@ -104,6 +81,10 @@ export async function fetchGeneratorPlugin(opts: Options): Promise<Plugin> {
     for (const key of Object.keys(watchMap) as (keyof typeof watchMap)[]) {
       if (watchMap[key]?.[file]) {
         await watchMap[key][file]();
+        if (key === "srcFiles") {
+          // some source file updated, rebuilding index files
+          await generateIndexFiles();
+        }
       }
     }
   };

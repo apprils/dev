@@ -1,5 +1,4 @@
 import { join } from "path";
-import { parentPort } from "worker_threads";
 
 import { extractApiAssets } from "../ast";
 import { filesGeneratorFactory } from "../base";
@@ -8,48 +7,62 @@ import enhancedTpl from "./templates/enhanced.tpl";
 import simpleTpl from "./templates/simple.tpl";
 import baseTpl from "./templates/base.tpl";
 import indexTpl from "./templates/index.tpl";
+import type { Route } from "../@types";
 
-import type { WorkerData } from "./@types";
+type GenerateRouteAssets = {
+  fetchDir: string;
+  route: Route;
+  root: string;
+  base: string;
+};
 
-parentPort?.on(
-  "message",
-  async ({ generateRouteAssets, generateIndexFiles, fetchDir }: WorkerData) => {
-    const { generateFile } = filesGeneratorFactory();
+type GenerateIndexFiles = {
+  fetchDir: string;
+  routes: Route[];
+  sourceFolder: string;
+  importStringifyFrom?: string;
+};
 
-    if (generateRouteAssets) {
-      const { route, root, base } = generateRouteAssets;
+const { generateFile } = filesGeneratorFactory();
 
-      const { typeDeclarations, fetchDefinitions } = await extractApiAssets(
-        route.file,
-        {
-          root,
-          base,
-        },
-      );
+export async function generateRouteAssets({
+  route,
+  root,
+  base,
+  fetchDir,
+}: GenerateRouteAssets) {
+  const { typeDeclarations, fetchDefinitions } = await extractApiAssets(
+    route.file,
+    {
+      root,
+      base,
+    },
+  );
 
-      await generateFile(join(fetchDir, `${route.name}.ts`), {
-        template: fetchDefinitions ? enhancedTpl : simpleTpl,
-        context: { ...route, typeDeclarations, fetchDefinitions },
-      });
-    }
+  await generateFile(join(fetchDir, `${route.name}.ts`), {
+    template: fetchDefinitions ? enhancedTpl : simpleTpl,
+    context: { ...route, typeDeclarations, fetchDefinitions },
+  });
+}
 
-    if (generateIndexFiles) {
-      const { sourceFolder, importStringifyFrom, routes } = generateIndexFiles;
+export async function generateIndexFiles({
+  sourceFolder,
+  fetchDir,
+  importStringifyFrom,
+  routes,
+}: GenerateIndexFiles) {
+  await generateFile(join(fetchDir, "@base.ts"), {
+    template: baseTpl,
+    context: {
+      sourceFolder,
+      importStringifyFrom,
+    },
+  });
 
-      await generateFile(join(fetchDir, "@base.ts"), {
-        template: baseTpl,
-        context: {
-          sourceFolder,
-          importStringifyFrom,
-        },
-      });
-
-      await generateFile(join(fetchDir, "@index.ts"), {
-        template: indexTpl,
-        context: {
-          routes,
-        },
-      });
-    }
-  },
-);
+  await generateFile(join(fetchDir, "@index.ts"), {
+    template: indexTpl,
+    context: {
+      routes,
+    },
+  });
+}
