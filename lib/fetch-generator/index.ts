@@ -1,164 +1,112 @@
-import { dirname, basename, join } from "path";
+import { basename } from "path";
 
-import type { FSWatcher, Plugin, ResolvedConfig } from "vite";
-import fsx from "fs-extra";
+import type { Plugin } from "vite";
 
 import { defaults, privateDefaults } from "../defaults";
 import { resolvePath } from "../base";
 import { sourceFilesParsers } from "../api";
-import workerPool from "../worker-pool";
+import { workerPool } from "../worker-pool";
+import { bootstrap } from "./workers";
 
 import type { Route } from "../@types";
 
 type Options = {
   apiDir?: string;
-  filter?: (route: {
-    name: string;
-    path: string;
-  }) => boolean;
+  filter?: (route: Route) => boolean;
   importStringifyFrom?: string;
+  usePolling?: boolean;
 };
 
 const PLUGIN_NAME = "@appril:fetchGeneratorPlugin";
 
 type WatchHandler = (file?: string) => Promise<void>;
 
-export async function fetchGeneratorPlugin(opts: Options): Promise<Plugin> {
+export async function fetchGeneratorPlugin(opts?: Options): Promise<Plugin> {
   const {
     apiDir = defaults.apiDir,
-    filter = (_r) => true,
+    filter = (_r: Route) => true,
     importStringifyFrom,
-  } = opts;
-
-  let fetchDir: string;
+    usePolling = privateDefaults.usePolling,
+  } = opts || {};
 
   const sourceFolder = basename(resolvePath());
 
+  const srcWatchers: Record<string, WatchHandler> = {};
+
   const routeMap: Record<string, Route> = {};
 
-  const watchMap: {
-    srcFiles: Record<string, WatchHandler>;
-  } = {
-    srcFiles: {},
-  };
-
-  const generateIndexFiles = () => {
-    return workerPool.fetchGenerator.generateIndexFiles({
-      fetchDir,
-      routes: Object.values(routeMap).filter(filter),
-      sourceFolder,
-      importStringifyFrom,
-    });
-  };
-
-  const generateRouteAssets = (route: Route) => {
-    return workerPool.fetchGenerator.generateRouteAssets({
-      fetchDir,
-      route,
-      root: sourceFolder,
-      base: dirname(route.file.replace(resolvePath(), "")),
-    });
-  };
-
-  const runWatchHandlers = async (...keys: (keyof typeof watchMap)[]) => {
-    for (const handler of keys.flatMap((k) => Object.values(watchMap[k]))) {
-      await handler();
-    }
-
-    if (keys.includes("srcFiles")) {
-      await generateIndexFiles();
-    }
-  };
-
   const runWatchHandler = async (file: string) => {
-    if (routeMap[file]) {
-      // some route updated, rebuilding fetch assets
-      if (filter(routeMap[file])) {
-        await generateRouteAssets(routeMap[file]);
-      }
+    if (srcWatchers[file]) {
+      // updating routeMap
+      await srcWatchers[file]();
+
+      // then feeding routeMap to worker
+      await workerPool.fetchGenerator.handleSrcFileUpdate({
+        file,
+        routes: Object.values(routeMap),
+      });
+
       return;
     }
 
-    for (const key of Object.keys(watchMap) as (keyof typeof watchMap)[]) {
-      if (watchMap[key]?.[file]) {
-        await watchMap[key][file]();
-        if (key === "srcFiles") {
-          // some source file updated, rebuilding index files
-          await generateIndexFiles();
+    if (routeMap[file]) {
+      await workerPool.fetchGenerator.generateRouteAssets({
+        route: routeMap[file],
+      });
+      return;
+    }
+  };
+
+  // srcWatchers map should be ready by the time configureServer called,
+  // so it's safer to run this here rather than inside configResolved
+  for (const { file, parser } of await sourceFilesParsers({ apiDir })) {
+    srcWatchers[file] = async () => {
+      for (const { route } of await parser()) {
+        if (filter(route)) {
+          routeMap[route.fileFullpath] = route;
         }
       }
-    }
-  };
-
-  const armWatchHandlers = (watcher: FSWatcher) => {
-    // watching source files for changes;
-    // on every change rebuilding routeMap;
-    for (const map of Object.values(watchMap)) {
-      watcher.add(Object.keys(map));
-    }
-
-    // also watching files in apiDir for changes;
-    // on every change looking for routeMap entry
-    // and if matched, rebuilding assets for matched route
-    watcher.add(`${resolvePath(apiDir)}/**/*.ts`);
-
-    watcher.on("change", runWatchHandler);
-  };
-
-  async function configResolved(config: ResolvedConfig) {
-    fetchDir = join(config.cacheDir, privateDefaults.cache.fetchDir);
-
-    const tsconfig = JSON.parse(
-      await fsx.readFile(resolvePath("tsconfig.json"), "utf8"),
-    );
-
-    if (!tsconfig.compilerOptions.paths?.["@fetch/*"]) {
-      await fsx.outputFile(
-        resolvePath("tsconfig.json"),
-        JSON.stringify(
-          {
-            ...tsconfig,
-            compilerOptions: {
-              ...tsconfig.compilerOptions,
-              paths: {
-                ...tsconfig.compilerOptions.paths,
-                "@fetch/*": [
-                  join(fetchDir.replace(resolvePath(".."), ".."), "*"),
-                ],
-              },
-            },
-          },
-          null,
-          2,
-        ),
-        "utf8",
-      );
-    }
-
-    for (const { file, parser } of await sourceFilesParsers({ apiDir })) {
-      watchMap.srcFiles[file] = async () => {
-        const entries = await parser();
-
-        // source file changed (or first time read), adding its routes to routeMap
-        for (const { route } of entries) {
-          routeMap[route.file] = route;
-        }
-
-        // then rebuild routes defined by changed (or first time read) file
-        for (const { route } of entries) {
-          runWatchHandler(route.file);
-        }
-      };
-    }
-
-    await runWatchHandlers("srcFiles");
+    };
   }
 
   return {
     name: PLUGIN_NAME,
-    configResolved,
-    configureServer(server) {
-      armWatchHandlers(server.watcher);
+
+    async configResolved(config) {
+      // populating routeMap for bootstrap
+      for (const handler of Object.values(srcWatchers)) {
+        await handler();
+      }
+
+      const payload = {
+        routes: Object.values(routeMap),
+        // absolute path to folder containing generated files
+        cacheDir: config.cacheDir,
+        apiDir,
+        sourceFolder,
+        rootPath: resolvePath(".."),
+        importStringifyFrom,
+      };
+
+      config.command === "build"
+        ? await bootstrap(payload)
+        : await workerPool.fetchGenerator.bootstrap(payload);
+    },
+
+    configureServer({ watcher }) {
+      watcher.options = {
+        ...watcher.options,
+        disableGlobbing: false,
+        usePolling,
+      };
+
+      // watching source files for changes
+      watcher.add(Object.keys(srcWatchers));
+
+      // also watching files in apiDir for changes
+      watcher.add(`${resolvePath(apiDir)}/**/*.ts`);
+
+      watcher.on("change", runWatchHandler);
     },
   };
 }

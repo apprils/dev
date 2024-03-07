@@ -1,6 +1,6 @@
 
 {{#routes}}
-import {{importName}} from "./{{name}}";
+import {{importName}} from "./{{importPath}}";
 {{/routes}}
 
 export default {

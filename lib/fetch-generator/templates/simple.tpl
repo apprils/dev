@@ -3,7 +3,8 @@ import {
   fetchFactory,
   baseurl, apiurl,
   join, stringify,
-} from "@fetch/@base";
+  withLoader,
+} from "@fetch/../base";
 
 export const name = "{{name}}";
 export const base = join(baseurl, apiurl, "{{path}}");
@@ -14,10 +15,13 @@ export const createApi = (
 
 export const fetch = createApi()
 
+export { withLoader };
+
 export default {
   ...fetch,
   get name() { return name },
   get base() { return base },
   createApi,
   fetch,
+  withLoader,
 };

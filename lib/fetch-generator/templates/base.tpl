@@ -1,12 +1,15 @@
 
 import qs from "qs";
 import { useFetch } from "@vueuse/core";
+import type { Ref } from "vue";
 
 export { fetch as fetchFactory } from "@appril/more/fetch";
 
 export { baseurl, apiurl } from "{{sourceFolder}}/config";
 
-export type MaybeRef<T> = import("vue").Ref<T> | T;
+export type MaybeRef<T> = Ref<T> | {
+  [K in keyof T]: Ref<T[K]> | T[K];
+};
 
 export function join(...args: unknown[]): string {
   return args
@@ -34,7 +37,7 @@ export function stringifyParams(params?: object | string): string {
     : join(...Object.values(params || {}))
 }
 
-export function useFetchFactory(
+export function useFetchFactory<T = unknown>(
   base: string,
   method: string,
   args: unknown[],
@@ -42,7 +45,19 @@ export function useFetchFactory(
 ) {
   const path = join(base, stringifyParams(args[0] as object))
   return method === "get"
-    ? useFetch(`${path}?${stringify(args[1] as object)}`, opts)
-    : useFetch(path, opts)[method === "del" ? "delete" : method](args[1])
+    ? useFetch<T>(`${path}?${stringify(args[1] as object)}`, opts)
+    : useFetch<T>(path, opts)[method === "del" ? "delete" : method as never](args[1])
 }
 
+export async function withLoader(
+  worker: () => Promise<any>,
+  toggler?: (_s?: boolean) => boolean,
+) {
+  try {
+    toggler?.(true)
+    return await worker()
+  }
+  finally {
+    toggler?.(false)
+  }
+}

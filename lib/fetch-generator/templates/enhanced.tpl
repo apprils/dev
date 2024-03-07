@@ -3,7 +3,8 @@ import {
   baseurl, apiurl,
   fetchFactory, useFetchFactory,
   join, stringify, stringifyParams,
-} from "@fetch/@base";
+  withLoader,
+} from "@fetch/../base";
 
 {{#typeDeclarations}}
 {{text}}
@@ -20,7 +21,7 @@ const apiFactory = (
   {{#overloads}}
   function {{method}}(
     {{paramsType.name}}: {{paramsType.text}},
-    {{payloadType.name}}: import("@fetch/@base").MaybeRef<
+    {{payloadType.name}}: import("@fetch/../base").MaybeRef<
       {{payloadType.text}}
     >,
   ): Promise<{{bodyType}}>;
@@ -47,7 +48,7 @@ export const useFetch = (
   {{#overloads}}
   function {{method}}(
     {{paramsType.name}}: {{paramsType.text}},
-    {{payloadType.name}}: import("@fetch/@base").MaybeRef<
+    {{payloadType.name}}: import("@fetch/../base").MaybeRef<
       {{payloadType.text}}
     >,
   ): import("@vueuse/core").UseFetchReturn<{{bodyType}}>;
@@ -55,7 +56,7 @@ export const useFetch = (
   function {{method}}(
     ...args: unknown[]
   ): import("@vueuse/core").UseFetchReturn<{{bodyType}}> {
-    return useFetchFactory(base, "{{method}}", args, opts)
+    return useFetchFactory<{{bodyType}}>(base, "{{method}}", args, opts)
   }
   {{/fetchDefinitions}}
 
@@ -80,6 +81,8 @@ export const fetch = createApi()
 export const {{method}} = fetch.{{method}};
 {{/fetchDefinitions}}
 
+export { withLoader };
+
 export default {
   {{#fetchDefinitions}}
   {{method}}: fetch.{{method}},
@@ -89,4 +92,5 @@ export default {
   createApi,
   fetch,
   useFetch,
+  withLoader,
 };
