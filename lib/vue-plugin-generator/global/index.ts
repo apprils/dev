@@ -1,10 +1,10 @@
 import { join } from "path";
 import { readFile } from "fs/promises";
 
-import type { Plugin, ResolvedConfig } from "vite";
+import type { Plugin } from "vite";
 
-import { resolvePath, filesGeneratorFactory } from "../../base";
 import { BANNER } from "../../render";
+import { resolvePath, fileGenerator } from "../../base";
 
 import envTpl from "./templates/env.tpl";
 import indexTpl from "./templates/index.tpl";
@@ -40,8 +40,8 @@ export function vuePluginGeneratorGlobal(opts: Options): Plugin {
     templates: optedTemplates = {},
   } = { ...opts };
 
-  async function generateFiles(config: ResolvedConfig) {
-    const { generateFile } = filesGeneratorFactory();
+  async function generateFiles() {
+    const { generateFile } = fileGenerator();
 
     // re-reading templates every time
     const templates: TemplateMap = { ...defaultTemplates };
@@ -131,7 +131,7 @@ export function vuePluginGeneratorGlobal(opts: Options): Plugin {
 
         server.watcher.on("change", (file) => {
           if (watchedFiles.some((path) => file.includes(path))) {
-            return generateFiles(server.config);
+            return generateFiles();
           }
         });
       }

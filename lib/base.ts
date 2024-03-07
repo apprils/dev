@@ -14,7 +14,13 @@ export function sanitizePath(path: string): string {
   return path.replace(/\.+\/+/g, "");
 }
 
-export function filesGeneratorFactory() {
+// biome-ignore format:
+const fileGeneratorQueue: Record<
+  string,
+  (() => Promise<void>)[] | undefined
+> = {};
+
+export function fileGenerator() {
   const generatedFiles = new Set<string>();
 
   type Render = { template: string; context: object };
@@ -38,17 +44,33 @@ export function filesGeneratorFactory() {
     const [outfile, content, options] = args;
     const file = resolvePath(outfile);
 
-    generatedFiles.add(file);
-
     if (options?.overwrite === false) {
       if (await fsx.exists(file)) {
         return;
       }
     }
 
-    typeof content === "string"
-      ? await fsx.outputFile(file, content, "utf8")
-      : await renderToFile(file, content.template, content.context);
+    // biome-ignore format:
+    const worker = typeof content === "string"
+      ? () => fsx.outputFile(file, content, "utf8")
+      : () => renderToFile(file, content.template, content.context);
+
+    if (Array.isArray(fileGeneratorQueue[file])) {
+      fileGeneratorQueue[file]?.push(worker);
+      return;
+    }
+
+    fileGeneratorQueue[file] = [];
+
+    try {
+      await worker();
+      for (const worker of fileGeneratorQueue[file] || []) {
+        await worker();
+      }
+      generatedFiles.add(file);
+    } finally {
+      fileGeneratorQueue[file] = undefined;
+    }
   }
 
   return {
