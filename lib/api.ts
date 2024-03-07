@@ -1,6 +1,6 @@
 import { join } from "path";
 
-import { glob } from "glob";
+import { glob } from "fast-glob";
 import { parse } from "yaml";
 import fsx from "fs-extra";
 
@@ -18,28 +18,36 @@ export async function sourceFilesParsers({
     >;
   }[] = [];
 
-  for (const entry of await glob(pattern, {
+  const srcFiles = await glob(pattern, {
     cwd: resolvePath(apiDir),
-    withFileTypes: true,
-  })) {
-    const file = entry.fullpath();
+    onlyFiles: true,
+    absolute: true,
+    unique: true,
+  });
 
+  for (const srcFile of srcFiles) {
     parsers.push({
-      file,
+      file: srcFile,
       async parser() {
-        const fileContent = await fsx.readFile(file, "utf8");
-        const routeDefinitions = parse(fileContent);
+        const routeDefs = parse(await fsx.readFile(srcFile, "utf8"));
 
-        const entries = Object.entries(routeDefinitions) as [
-          path: string,
-          setup: RouteSetup | undefined,
-        ][];
+        const entries: {
+          setup: RouteSetup;
+          route: Route;
+          aliases: string[];
+        }[] = [];
 
-        return entries.map(([_path, setup]) => {
+        for (const [_path, setup] of Object.entries(routeDefs) as [
+          string,
+          RouteSetup,
+        ][]) {
           const name = sanitizePath(setup?.name || _path).replace(/\/+$/, "");
 
           const importPath = setup?.file
-            ? sanitizePath(setup.file.replace(/\.[^.]+$/, ""))
+            ? sanitizePath(setup.file.replace(/\.[^.]+$/, "")).replace(
+                `${resolvePath()}/`,
+                "",
+              )
             : join(apiDir, name);
 
           const importName = importPath.replace(/\W/g, "_");
@@ -53,20 +61,35 @@ export async function sourceFilesParsers({
               ? "/index.ts"
               : ".ts";
 
+          const file = importPath + fileExt;
+
           const serialized = JSON.stringify({
             name,
             path,
           });
 
+          let template = setup?.template;
+
+          if (template) {
+            // templates provided by routes are not watched for updates,
+            // reading them once at source file parsing
+            template = await fsx.readFile(
+              /^\//.test(template) ? template : resolvePath(template),
+              "utf8",
+            );
+          }
+
           const route: Route = {
+            srcFile,
             name,
             path,
             importName,
             importPath,
-            file: resolvePath(importPath + fileExt),
-            fileExt,
+            file,
+            fileFullpath: resolvePath(file),
             meta: JSON.stringify(setup?.meta || {}),
             serialized,
+            template,
           };
 
           const aliases =
@@ -74,8 +97,10 @@ export async function sourceFilesParsers({
               ? [setup.alias]
               : [...(setup?.alias || [])];
 
-          return { setup, route, aliases };
-        });
+          entries.push({ setup, route, aliases });
+        }
+
+        return entries;
       },
     });
   }
