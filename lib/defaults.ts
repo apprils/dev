@@ -6,9 +6,17 @@ export const defaults = {
 };
 
 export const privateDefaults = {
-  routesFile: "_routes.ts",
-  urlmapFile: "_urlmap.ts",
+  usePolling: true,
+  api: {
+    routesFile: "_routes.ts",
+    urlmapFile: "_urlmap.ts",
+  },
+  views: {
+    routesFile: "_routes.ts",
+    urlmapFile: "_urlmap.ts",
+  },
   cache: {
     fetchDir: "@fetch",
+    assetsDir: "@assets",
   },
 };
