@@ -18,24 +18,31 @@ function zodErrorHandler(error: any) {
 {{zodSchemas}}
 
 export default {
-  {{^errors.length}}
-  {{#payloadTypes}}
-  {{index}}: [
-    (ctx, next) => {
-      try {
-        {{id}}.parse(ctx["@payload"])
-      } catch (error: any) {
-        throw zodErrorHandler(error)
+  middleworkerParams: {
+    {{#middleworkerParams}}
+    {{index}}: "{{text}}",
+    {{/middleworkerParams}}
+  },
+
+  payloadValidation: {
+    {{#payloadTypes}}
+    {{index}}: [
+      (ctx, next) => {
+        try {
+          {{id}}.parse(ctx.payload)
+        } catch (error: any) {
+          throw zodErrorHandler(error)
+        }
+        return next()
       }
-      return next()
-    }
-  ] satisfies Middleware[],
-  {{/payloadTypes}}
-  {{/errors.length}}
+    ] satisfies Middleware[],
+    {{/payloadTypes}}
+  },
+
 }
 
 {{#errors.length}}
-console.error("{{path}}: failed building zod schema(s)")
+console.error("\n[ \x1b[31m{{file}}\x1b[0m ]: failed building zod schema(s)")
 {{#errors}}
 console.error(`{{.}}`)
 {{/errors}}

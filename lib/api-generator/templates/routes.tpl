@@ -1,6 +1,8 @@
 {{BANNER}}
 
 import { type Meta, routeMapper } from "@appril/core/router";
+
+import assets from "{{assetsDir}}";
 import router from "./_router";
 
 {{#routes}}
@@ -12,6 +14,7 @@ export const routes = {
   "{{name}}": {
     name: "{{name}}",
     path: "{{path}}",
+    file: "{{file}}",
     meta: {{importName}}$meta,
   },
 {{/routes}}
@@ -19,17 +22,11 @@ export const routes = {
 
 {{#routes}}
 import {{importName}} from "{{sourceFolder}}/{{importPath}}";
-{{#payloadValidation}}
-import {{payloadValidation.importName}} from "{{payloadValidation.importPath}}";
-{{/payloadValidation}}
 for (
   const { name, path, method, middleware } of routeMapper(
     {{importName}} as [],
     routes["{{name}}"],
-    {{middleworkerParams}},
-    {{#payloadValidation}}
-    {{payloadValidation.importName}},
-    {{/payloadValidation}}
+    assets["{{name}}"],
   )
 ) {
   router.register(path, [method], middleware, { name });
