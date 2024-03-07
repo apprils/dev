@@ -2,10 +2,10 @@ export type MiddleworkerParams = Record<number, string>;
 export type MiddleworkerPayloadTypes = Record<number, string>;
 
 export type TypeFile = {
-  importPath: string;
   file: string;
+  importPath: string;
   content: string;
-  rebuild: () => Promise<void>;
+  routes: Set<string>;
 };
 
 export type TypeDeclaration = {
@@ -46,12 +46,49 @@ export type RouteSetup = {
 };
 
 export type Route = {
+  srcFile: string;
   name: string;
   path: string;
   importName: string;
   importPath: string;
+  // relative file path
   file: string;
-  fileExt: string;
+  // abs file path
+  fileFullpath: string;
   meta: string;
   serialized: string;
+  assetsPath?: string;
+  template?: string;
+};
+
+// aliases are not reflected in in urlmap
+export type RouteAlias = Omit<Route, "serialized">;
+
+export type ApiTemplates = {
+  route?: string;
+};
+
+export type ViewSetup = {
+  params?: string;
+  env?: string | boolean;
+  meta?: Record<string, unknown>;
+  options?: Record<string, unknown>;
+};
+
+export type View = {
+  srcFile: string;
+  name: string;
+  importName: string;
+  path: string;
+  params: string;
+  file: string;
+  meta: string;
+  options: string;
+  importPath: string;
+  envApi?: string;
+  serialized?: string;
+};
+
+export type ViewTemplates = {
+  view?: string;
 };
