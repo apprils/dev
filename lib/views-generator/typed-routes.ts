@@ -1,4 +1,4 @@
-import type { ExportedView } from "./@types";
+import type { View } from "../@types";
 
 type Param = {
   name: string;
@@ -8,13 +8,11 @@ type Param = {
   type: string;
 };
 
-export function typedRoutes(views: ExportedView[]) {
+export function typedRoutes(views: View[]) {
   return views.map(typedRoute);
 }
 
-function typedRoute(
-  view: ExportedView,
-): ExportedView & { typedParams: string } {
+function typedRoute(view: View): View & { typedParams: string } {
   const params: Param[] = extractParams(view);
   return { ...view, typedParams: typedParams(params).join(", ") };
 }
@@ -30,7 +28,7 @@ function typedParamsMapper(params: Param[], isRaw: boolean): string {
   return `{ ${params.map(mapper).join(", ")} }`;
 }
 
-function extractParams(view: ExportedView): Param[] {
+function extractParams(view: View): Param[] {
   return view.params
     .split(/(:[^/]+)/)
     .filter((e) => e[0] === ":")

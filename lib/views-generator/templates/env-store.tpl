@@ -3,7 +3,7 @@
 import { defineStore } from "pinia";
 
 {{#viewsWithEnvApi.length}}
-import fetch from "@fetch/@index";
+import fetch from "@fetch/../index";
 {{/viewsWithEnvApi.length}}
 
 export type State = {
@@ -11,6 +11,8 @@ export type State = {
   "{{name}}": Awaited<ReturnType<typeof fetch["{{name}}"]["get"]>> | undefined;
 {{/viewsWithEnvApi}}
 }
+
+export const key = Symbol() as import("vue").InjectionKey<State>;
 
 const fetchMap = {
 {{#viewsWithEnvApi}}

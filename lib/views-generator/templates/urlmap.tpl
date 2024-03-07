@@ -1,9 +1,7 @@
 {{BANNER}}
 
-import type { URLMapperConfig } from "~/helpers/url";
-
-import config from "~/config";
-import { urlMapper } from "~/helpers/url";
+import { type URLMapperConfig, urlMapper } from "{{sourceFolder}}/../helpers/url";
+import config from "{{sourceFolder}}/../config";
 import { baseurl } from "{{sourceFolder}}/config";
 
 export class URLMapper {
@@ -17,7 +15,14 @@ export class URLMapper {
   get $config() { return this.#config }
 
   {{#views}}
-  get "{{name}}"() { return urlMapper(this.$config, { base: baseurl }, {{serialized}}) }
+  get "{{name}}"() {
+    return urlMapper(
+      this.$config,
+      { base: baseurl },
+      {{serialized}},
+    )
+  }
+
   {{/views}}
 
 }
