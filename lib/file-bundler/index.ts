@@ -1,11 +1,9 @@
 import fsx from "fs-extra";
-import { glob } from "glob";
+import { glob } from "fast-glob";
+import type { Plugin } from "vite";
 
-import { resolvePath, filesGeneratorFactory } from "../base";
 import { BANNER } from "../render";
-
-import type { Plugin, ResolvedConfig } from "vite";
-import type { Path } from "path-scurry";
+import { resolvePath, fileGenerator } from "../base";
 
 type ContextFolder = {
   folder: string;
@@ -39,16 +37,12 @@ type ResolvedFile = {
   importName: string;
   importPath: string;
   content: string;
-  match: Path;
 };
 
 const PLUGIN_NAME = "@appril:fileBundlerPlugin";
 
 export function fileBundlerPlugin(entries: Entry[]): Plugin {
-  async function resolveFiles(
-    config: ResolvedConfig,
-    entry: Required<Entry>,
-  ): Promise<ResolvedFile[]> {
+  async function resolveFiles(entry: Required<Entry>): Promise<ResolvedFile[]> {
     const files: ResolvedFile[] = [];
 
     const patterns = Array.isArray(entry.pattern)
@@ -63,9 +57,12 @@ export function fileBundlerPlugin(entries: Entry[]): Plugin {
         : [resolvePath(entry.path, p)];
     };
 
+    const cwd = resolvePath(entry.path);
+
     const matches = await glob(patterns.flatMap(patternMapper), {
-      cwd: resolvePath(entry.path),
-      withFileTypes: true,
+      cwd,
+      onlyFiles: true,
+      objectMode: true,
       ignore: [
         ...(Array.isArray(entry.ignore)
           ? entry.ignore
@@ -81,42 +78,38 @@ export function fileBundlerPlugin(entries: Entry[]): Plugin {
     });
 
     for (const match of matches) {
-      if (match.isDirectory()) {
-        const entryFiles = await resolveFiles(config, entry);
-        files.push(...entryFiles);
-      } else if (match.isFile()) {
-        if (match.name === entry.outfile) {
-          continue;
-        }
-
-        const name = match.relative().replace(/\.([^.]+)$/, "");
-
-        // biome-ignore format:
-        const folder = entry.folders.find(
-          (f) => new RegExp(`^${f}/`).test(name)
-        ) || "";
-
-        const content = await fsx.readFile(match.fullpath(), "utf8");
-
-        files.push({
-          name,
-          basename: folder ? name.replace(new RegExp(`^${folder}/`), "") : name,
-          path: match.fullpath(),
-          relativePath: match.relative(),
-          folder,
-          importName: `$${match.relative().replace(/[^\w]/g, "_")}`,
-          importPath: `./${name}`,
-          content,
-          match,
-        });
+      if (match.path === resolvePath(entry.outfile)) {
+        continue;
       }
+
+      const relativePath = match.path.replace(`${cwd}/`, "");
+
+      const name = relativePath.replace(/\.([^.]+)$/, "");
+
+      // biome-ignore format:
+      const folder = entry.folders.find(
+        (f) => new RegExp(`^${f}/`).test(name)
+      ) || "";
+
+      const content = await fsx.readFile(match.path, "utf8");
+
+      files.push({
+        name,
+        basename: folder ? name.replace(new RegExp(`^${folder}/`), "") : name,
+        path: match.path,
+        relativePath,
+        folder,
+        importName: `$${name.replace(/[^\w]/g, "_")}`,
+        importPath: `./${name}`,
+        content,
+      });
     }
 
     return files.sort((a, b) => a.name.localeCompare(b.name));
   }
 
-  async function generateFiles(config: ResolvedConfig) {
-    const { generateFile } = filesGeneratorFactory();
+  async function generateFiles() {
+    const { generateFile } = fileGenerator();
 
     for (const _entry of entries) {
       const entry: Required<Entry> = {
@@ -128,7 +121,7 @@ export function fileBundlerPlugin(entries: Entry[]): Plugin {
         ..._entry,
       };
 
-      const files = await resolveFiles(config, entry);
+      const files = await resolveFiles(entry);
 
       const template = await fsx.readFile(resolvePath(entry.template), "utf8");
 
