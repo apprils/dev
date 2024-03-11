@@ -1,8 +1,6 @@
 {
-  "extends": "@appril/tsconfig/lib.json",
-  "include": [
-    "lib"
-  ],
+  "extends": "@appril/configs/tsconfig.lib.json",
+  "include": ["lib"],
   "compilerOptions": {
     "outDir": "pkg"
   }
