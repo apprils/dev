@@ -1,10 +1,6 @@
 {
-  "$schema": "https://biomejs.dev/schemas/1.5.3/schema.json",
-  "files": {
-    "include": ["./lib/**/*.ts"]
-  },
+  "extends": ["@appril/configs/biome"],
   "formatter": {
-    "indentStyle": "space",
-    "indentWidth": 2
+    "ignore": ["./package*.json"]
   }
 }

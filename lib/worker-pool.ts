@@ -1,5 +1,5 @@
-import { join } from "path";
-import { Worker, isMainThread, parentPort } from "worker_threads";
+import { join } from "node:path";
+import { Worker, isMainThread, parentPort } from "node:worker_threads";
 
 import * as apiGenerator from "./api-generator/workers";
 import * as apiAssets from "./api-assets/workers";

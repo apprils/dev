@@ -1,4 +1,4 @@
-import { join } from "path";
+import { join } from "node:path";
 
 import { glob } from "fast-glob";
 import { parse } from "yaml";

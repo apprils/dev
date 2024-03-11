@@ -1,4 +1,4 @@
-import { resolve, basename, join } from "path";
+import { resolve, basename, join } from "node:path";
 
 import type { Plugin } from "vite";
 import type { BuildOptions } from "esbuild";

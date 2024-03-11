@@ -1,4 +1,4 @@
-import { resolve, join } from "path";
+import { resolve, join } from "node:path";
 
 import * as tsquery from "@phenomnomnominal/tsquery";
 import fsx from "fs-extra";
@@ -21,12 +21,12 @@ import {
   isStringLiteral,
 } from "typescript";
 
-import {
-  type TypeDeclaration,
-  type MiddleworkerParams,
-  type MiddleworkerPayloadTypes,
-  type FetchDefinition,
-  type FetchDefinitionOverload,
+import type {
+  TypeDeclaration,
+  MiddleworkerParams,
+  MiddleworkerPayloadTypes,
+  FetchDefinition,
+  FetchDefinitionOverload,
 } from "./@types";
 
 export async function extractApiAssets(

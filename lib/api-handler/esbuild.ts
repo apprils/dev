@@ -1,5 +1,5 @@
-import { createServer } from "http";
-import { join } from "path";
+import { createServer } from "node:http";
+import { join } from "node:path";
 
 import type Koa from "koa";
 import { type BuildOptions, type Plugin, context, build } from "esbuild";

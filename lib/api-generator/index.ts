@@ -1,4 +1,4 @@
-import { basename, join } from "path";
+import { basename, join } from "node:path";
 
 import type { Plugin } from "vite";
 import fsx from "fs-extra";

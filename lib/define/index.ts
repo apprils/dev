@@ -1,5 +1,5 @@
-import { resolve } from "path";
-import * as fs from "fs/promises";
+import { resolve } from "node:path";
+import * as fs from "node:fs/promises";
 
 import type { Plugin } from "vite";
 import fsx from "fs-extra";

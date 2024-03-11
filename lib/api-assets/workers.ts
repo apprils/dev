@@ -1,5 +1,5 @@
-import { dirname, join } from "path";
-import { parentPort } from "worker_threads";
+import { dirname, join } from "node:path";
+import { parentPort } from "node:worker_threads";
 
 import { generate } from "ts-to-zod";
 

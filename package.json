@@ -54,8 +54,8 @@
     "yaml": "^2.4.1"
   },
   "devDependencies": {
-    "@biomejs/biome": "^1.5.3",
     "@appril/configs": "^0.2.6",
+    "@biomejs/biome": "^1.6.0",
     "@types/fs-extra": "^11.0.4",
     "@types/koa": "^2.15.0",
     "@types/mustache": "^4.2.5",

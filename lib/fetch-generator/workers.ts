@@ -1,4 +1,4 @@
-import { join, dirname } from "path";
+import { join, dirname } from "node:path";
 
 import fsx from "fs-extra";
 
