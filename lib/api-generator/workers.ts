@@ -65,7 +65,7 @@ export async function handleSrcFileUpdate({
   await generateIndexFiles({ routes, aliases });
 }
 
-export async function generateRouteFiles({
+async function generateRouteFiles({
   route,
   customTemplates,
 }: { route: Route; customTemplates: ApiTemplates }) {
@@ -79,7 +79,7 @@ export async function generateRouteFiles({
   );
 }
 
-export async function generateIndexFiles(data: {
+async function generateIndexFiles(data: {
   routes: Route[];
   aliases: RouteAlias[];
 }) {
