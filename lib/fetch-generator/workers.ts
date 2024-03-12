@@ -64,7 +64,15 @@ export async function handleSrcFileUpdate({
   await generateIndexFiles({ routes });
 }
 
-export async function generateRouteAssets({
+export async function handleRouteFileUpdate({
+  route,
+}: {
+  route: Route;
+}) {
+  await generateRouteAssets({ route });
+}
+
+async function generateRouteAssets({
   route,
 }: {
   route: Route;
@@ -83,7 +91,7 @@ export async function generateRouteAssets({
   });
 }
 
-export async function generateIndexFiles({
+async function generateIndexFiles({
   routes,
 }: {
   routes: Route[];
