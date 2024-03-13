@@ -1,8 +1,9 @@
 import { join, resolve } from "node:path";
 
 import fsx from "fs-extra";
+import crc32 from "crc/crc32";
 
-import { renderToFile } from "./render";
+import { render } from "./render";
 
 const CWD = process.cwd();
 
@@ -44,16 +45,25 @@ export function fileGenerator() {
     const [outfile, content, options] = args;
     const file = resolvePath(outfile);
 
-    if (options?.overwrite === false) {
-      if (await fsx.exists(file)) {
-        return;
-      }
-    }
+    const worker = async () => {
+      // biome-ignore format:
+      const text = typeof content === "string"
+        ? content
+        : render(content.template, content.context);
 
-    // biome-ignore format:
-    const worker = typeof content === "string"
-      ? () => fsx.outputFile(file, content, "utf8")
-      : () => renderToFile(file, content.template, content.context);
+      // two fs calls (check existence and read file)
+      // is a good price for not triggering watchers on every render
+      if (await fsx.exists(file)) {
+        if (options?.overwrite === false) {
+          return;
+        }
+        if (crc32(text) === crc32(await fsx.readFile(file, "utf8"))) {
+          return;
+        }
+      }
+
+      await fsx.outputFile(file, text, "utf8");
+    };
 
     if (Array.isArray(fileGeneratorQueue[file])) {
       fileGeneratorQueue[file]?.push(worker);
