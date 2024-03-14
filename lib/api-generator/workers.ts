@@ -1,7 +1,7 @@
 import { join } from "node:path";
 
 import type { ApiTemplates, Route, RouteAlias } from "../@types";
-import { privateDefaults } from "../defaults";
+import { defaults } from "../defaults";
 import { fileGenerator } from "../base";
 import { BANNER } from "../render";
 
@@ -30,7 +30,7 @@ export async function bootstrap(data: {
 
   rootPath = data.rootPath;
   sourceFolder = data.sourceFolder;
-  assetsDir = join(cacheDir, privateDefaults.cache.assetsDir);
+  assetsDir = join(cacheDir, defaults.cache.assetsDir);
   apiDir = data.apiDir;
 
   await updateTsconfig(data);
@@ -84,12 +84,8 @@ async function generateIndexFiles(data: {
   aliases: RouteAlias[];
 }) {
   const fileMap = [
-    [
-      privateDefaults.api.routesFile,
-      routesTpl,
-      [...data.routes, ...data.aliases],
-    ],
-    [privateDefaults.api.urlmapFile, urlmapTpl, data.routes],
+    [defaults.api.routesFile, routesTpl, [...data.routes, ...data.aliases]],
+    [defaults.api.urlmapFile, urlmapTpl, data.routes],
   ] as [string, string, Route[] | RouteAlias[]][];
 
   for (const [outFile, template, routes] of fileMap) {

@@ -3,7 +3,7 @@ import { join, dirname } from "node:path";
 import fsx from "fs-extra";
 
 import type { Route } from "../@types";
-import { privateDefaults } from "../defaults";
+import { defaults } from "../defaults";
 import { extractApiAssets } from "../ast";
 import { fileGenerator } from "../base";
 
@@ -30,7 +30,7 @@ export async function bootstrap(data: {
 
   rootPath = data.rootPath;
   sourceFolder = data.sourceFolder;
-  fetchDir = join(cacheDir, privateDefaults.cache.fetchDir);
+  fetchDir = join(cacheDir, defaults.cache.fetchDir);
 
   await updateTsconfig(data);
 

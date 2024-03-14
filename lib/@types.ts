@@ -1,3 +1,39 @@
+export type PluginOptions = {
+  esbuildConfig: import("esbuild").BuildOptions;
+  apiDir?: string;
+  routerDir?: string;
+  viewsDir?: string;
+  storesDir?: string;
+  useWorkers?: boolean;
+  usePolling?: boolean;
+  apiAssets?: {
+    filter?: (route: Route) => boolean;
+    typeMap?: Record<string, string | string[]>;
+    importZodErrorHandlerFrom?: string;
+  };
+  apiGenerator?: {
+    templates?: ApiTemplates;
+  };
+  apiHandler?: {
+    flushPatterns?: RegExp[];
+  };
+  fetchGenerator?: {
+    filter?: (route: Route) => boolean;
+    importStringifyFrom?: string;
+  };
+  viewsGenerator?: {
+    templates?: ViewTemplates;
+  };
+  crudGenerator?: import("./crud-generator/@types").Options;
+};
+
+export type ResolvedPluginOptions = Required<
+  Omit<PluginOptions, "crudGenerator">
+> & {
+  sourceFolder: string;
+  crudGenerator?: import("./crud-generator/@types").Options;
+};
+
 export type MiddleworkerParams = Record<number, string>;
 export type MiddleworkerPayloadTypes = Record<number, string>;
 
@@ -39,6 +75,7 @@ export type FetchDefinition = {
 
 export type RouteSetup = {
   name?: string;
+  basename?: string;
   alias?: string | string[];
   file?: string;
   template?: string;
@@ -48,6 +85,7 @@ export type RouteSetup = {
 export type Route = {
   srcFile: string;
   name: string;
+  basename: string;
   path: string;
   importName: string;
   importPath: string;
@@ -92,3 +130,6 @@ export type View = {
 export type ViewTemplates = {
   view?: string;
 };
+
+export type BootstrapPayload<T extends { bootstrap: (_p: never) => void }> =
+  Parameters<T["bootstrap"]>[0];

@@ -44,7 +44,10 @@ export async function extractApiAssets(
   middleworkerPayloadTypes: MiddleworkerPayloadTypes;
   fetchDefinitions: FetchDefinition[];
 }> {
-  const fileContent = await fsx.readFile(file, "utf8");
+  const fileContent = (await fsx.exists(file))
+    ? await fsx.readFile(file, "utf8")
+    : "";
+
   const ast = tsquery.ast(fileContent);
 
   const typeDeclarations = extractTypeDeclarations(ast, { root, base });

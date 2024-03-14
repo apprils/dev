@@ -63,15 +63,15 @@ export function esbuildHandler(
   };
 
   return {
-    build: () =>
-      build({
+    watch,
+    build: async () => {
+      await build({
         ...config,
         bundle: true,
         entryPoints: [join(sourceFolder, apiDir, "_server.ts")],
         plugins: [...(config.plugins || [])],
         outfile: join(outDir, "index.js"),
-      }),
-
-    watch,
+      });
+    },
   };
 }

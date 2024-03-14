@@ -12,12 +12,12 @@ import routesTpl from "./templates/routes.tpl";
 import typedRoutesTpl from "./templates/typed-routes.tpl";
 import urlmapTpl from "./templates/urlmap.tpl";
 import envStoreTpl from "./templates/env-store.tpl";
-import { privateDefaults } from "../defaults";
+import { defaults } from "../defaults";
 
 const { generateFile } = fileGenerator();
 
 let sourceFolder: string;
-let routesDir: string;
+let routerDir: string;
 let storesDir: string;
 let viewsDir: string;
 let apiDir: string;
@@ -25,7 +25,7 @@ let apiDir: string;
 export async function bootstrap(data: {
   views: View[];
   sourceFolder: string;
-  routesDir: string;
+  routerDir: string;
   storesDir: string;
   viewsDir: string;
   apiDir: string;
@@ -34,7 +34,7 @@ export async function bootstrap(data: {
   const { customTemplates } = data;
 
   sourceFolder = data.sourceFolder;
-  routesDir = data.routesDir;
+  routerDir = data.routerDir;
   storesDir = data.storesDir;
   viewsDir = data.viewsDir;
   apiDir = data.apiDir;
@@ -76,7 +76,7 @@ async function generateViewFiles({
 async function generateIndexFiles(data: { views: View[] }) {
   const views = data.views.sort((a, b) => a.name.localeCompare(b.name));
 
-  await generateFile(join(routesDir, "_routes.d.ts"), {
+  await generateFile(join(routerDir, defaults.views.routesDtsFile), {
     template: typedRoutesTpl,
     context: {
       BANNER,
@@ -84,7 +84,7 @@ async function generateIndexFiles(data: { views: View[] }) {
     },
   });
 
-  await generateFile(join(storesDir, "env.ts"), {
+  await generateFile(join(storesDir, defaults.views.envStoreFile), {
     template: envStoreTpl,
     context: {
       BANNER,
@@ -95,10 +95,10 @@ async function generateIndexFiles(data: { views: View[] }) {
   });
 
   for (const [outfile, template] of [
-    [privateDefaults.views.routesFile, routesTpl],
-    [privateDefaults.views.urlmapFile, urlmapTpl],
+    [defaults.views.routesFile, routesTpl],
+    [defaults.views.urlmapFile, urlmapTpl],
   ]) {
-    await generateFile(join(routesDir, outfile), {
+    await generateFile(join(routerDir, outfile), {
       template,
       context: {
         BANNER,
@@ -123,6 +123,6 @@ async function generateIndexFiles(data: { views: View[] }) {
       stringify(views.reduce(reducer, {})),
     ].join("\n");
 
-    await generateFile(join(apiDir, "_000_env_routes.yml"), content);
+    await generateFile(join(apiDir, defaults.views.envRoutesFile), content);
   }
 }

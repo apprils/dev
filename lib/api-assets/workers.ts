@@ -7,7 +7,7 @@ import type { Route, TypeFile } from "../@types";
 import { fileGenerator } from "../base";
 import { render } from "../render";
 import { extractApiAssets } from "../ast";
-import { privateDefaults } from "../defaults";
+import { defaults } from "../defaults";
 
 import schemaSourceTpl from "./templates/schema-source.tpl";
 import assetsTpl from "./templates/assets.tpl";
@@ -29,7 +29,7 @@ export async function bootstrap(data: {
   const { cacheDir, routes, typeFiles } = data;
 
   sourceFolder = data.sourceFolder;
-  assetsDir = join(cacheDir, privateDefaults.cache.assetsDir);
+  assetsDir = join(cacheDir, defaults.cache.assetsDir);
   importZodErrorHandlerFrom = data.importZodErrorHandlerFrom;
 
   for (const route of routes) {

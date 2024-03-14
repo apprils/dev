@@ -1,7 +1,6 @@
 
-import qs from "qs";
-import { useFetch } from "@vueuse/core";
 import type { Ref } from "vue";
+import { useFetch } from "@vueuse/core";
 
 export { fetch as fetchFactory } from "@appril/more/fetch";
 
@@ -23,6 +22,7 @@ export { stringify } from "{{importStringifyFrom}}";
 {{/importStringifyFrom}}
 
 {{^importStringifyFrom}}
+import qs from "qs";
 export function stringify(query?: object): string {
   return qs.stringify(query || {}, {
     arrayFormat: "brackets",

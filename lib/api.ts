@@ -32,14 +32,14 @@ export async function sourceFilesParsers({
         const routeDefs = parse(await fsx.readFile(srcFile, "utf8"));
 
         const entries: {
-          setup: RouteSetup;
+          setup?: RouteSetup;
           route: Route;
           aliases: string[];
         }[] = [];
 
         for (const [_path, setup] of Object.entries(routeDefs) as [
           string,
-          RouteSetup,
+          RouteSetup | undefined,
         ][]) {
           const name = sanitizePath(setup?.name || _path).replace(/\/+$/, "");
 
@@ -82,6 +82,7 @@ export async function sourceFilesParsers({
           const route: Route = {
             srcFile,
             name,
+            basename: setup?.basename || name,
             path,
             importName,
             importPath,
