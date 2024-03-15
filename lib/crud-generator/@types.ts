@@ -42,8 +42,8 @@ export type Options = {
     ] */
   schemas?: string[];
 
-  apiTemplates?: ApiTemplates;
-  clientTemplates?: ClientTemplates;
+  apiTemplates?: string | ApiTemplates;
+  clientTemplates?: string | ClientTemplates;
 
   alias?: Record<string, string | string[]>;
   tableFilter?: (t: TableDeclaration) => boolean;

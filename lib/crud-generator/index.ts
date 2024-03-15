@@ -1,7 +1,9 @@
 import { join } from "node:path";
 
 import type { ResolvedConfig } from "vite";
+import { glob } from "fast-glob";
 import fsx from "fs-extra";
+import { sortTemplates } from "@appril/crud/templates";
 
 import type { ResolvedPluginOptions, BootstrapPayload } from "../@types";
 import type { CustomTemplates, Options, Table } from "./@types";
@@ -79,9 +81,27 @@ export async function crudGenerator(
     k: keyof CustomTemplates,
     v: Record<string, { file: string; content: string }>,
   ][]) {
-    for (const [name, path] of Object.entries({
-      ...options.crudGenerator?.[`${key}Templates`],
-    })) {
+    const optedTemplates = options.crudGenerator?.[`${key}Templates`];
+
+    let customMap: Record<string, string> = {};
+
+    if (typeof optedTemplates === "string") {
+      const entries = await glob(join(optedTemplates, "**/*"), {
+        cwd: resolvePath(),
+        objectMode: true,
+        absolute: false,
+        onlyFiles: true,
+        deep: 3,
+      });
+
+      for (const { name, path } of entries.sort(sortTemplates)) {
+        customMap[name.replace(".tpl", "")] = path;
+      }
+    } else if (typeof optedTemplates === "object") {
+      customMap = optedTemplates;
+    }
+
+    for (const [name, path] of Object.entries(customMap)) {
       const file = resolvePath(path);
       tplWatchers[file] = async () => {
         map[name] = {
