@@ -1,3 +1,4 @@
+import { resolve } from "node:path";
 import type { Worker } from "node:worker_threads";
 
 import type { ResolvedConfig } from "vite";
@@ -11,7 +12,6 @@ import type {
   BootstrapPayload,
 } from "../@types";
 
-import { resolvePath } from "../base";
 import { sourceFilesParsers } from "../api";
 
 type Workers = typeof import("./workers");
@@ -21,7 +21,7 @@ export async function apiAssets(
   options: ResolvedPluginOptions,
   { worker, workerPool }: { worker: Worker; workerPool: Workers },
 ) {
-  const { sourceFolder, apiDir } = options;
+  const { sourceFolder, sourceFolderPath, apiDir, varDir } = options;
 
   const {
     filter = (_r: Route) => true,
@@ -37,7 +37,7 @@ export async function apiAssets(
 
   for (const [importPath, patterns] of Object.entries(typeMap || {})) {
     const files = await glob(patterns, {
-      cwd: resolvePath(),
+      cwd: sourceFolderPath,
       onlyFiles: true,
       absolute: true,
       unique: true,
@@ -102,7 +102,7 @@ export async function apiAssets(
     }
   });
 
-  for (const { file, parser } of await sourceFilesParsers({ apiDir })) {
+  for (const { file, parser } of await sourceFilesParsers(config, options)) {
     srcWatchers[file] = async () => {
       for (const { route } of await parser()) {
         routeMap[route.fileFullpath] = filter(route)
@@ -120,7 +120,7 @@ export async function apiAssets(
   const bootstrapPayload: BootstrapPayload<Workers> = {
     routes: Object.values(routeMap),
     sourceFolder,
-    cacheDir: config.cacheDir,
+    varDir,
     typeFiles: Object.values(typeFiles),
     importZodErrorHandlerFrom,
   };
@@ -132,7 +132,7 @@ export async function apiAssets(
       // watching source files for changes
       ...Object.keys(srcWatchers),
       // also watching files in apiDir for changes
-      ...[`${resolvePath(apiDir)}/**/*.ts`],
+      ...[`${resolve(sourceFolderPath, apiDir)}/**/*.ts`],
       // also watching type files
       ...Object.keys(typeFiles),
     ],

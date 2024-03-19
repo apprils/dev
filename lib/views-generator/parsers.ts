@@ -1,25 +1,27 @@
-import { basename, join } from "node:path";
+import { basename, join, resolve } from "node:path";
 
 import type { ResolvedConfig } from "vite";
 import { glob } from "fast-glob";
 import { parse } from "yaml";
 import fsx from "fs-extra";
 
-import { resolvePath, sanitizePath } from "../base";
-import type { View, ViewSetup } from "../@types";
+import { sanitizePath } from "../base";
+import type { ResolvedPluginOptions, View, ViewSetup } from "../@types";
 
-export async function sourceFilesParsers({
-  config,
-  viewsDir,
+export async function sourceFilesParsers(
+  config: ResolvedConfig,
+  options: ResolvedPluginOptions,
   pattern = "**/*_views.yml",
-}: { config: ResolvedConfig; viewsDir: string; pattern?: string }) {
+) {
+  const { sourceFolderPath, viewsDir } = options;
+
   const parsers: {
     file: string;
     parser: () => Promise<{ view: View }[]>;
   }[] = [];
 
   const srcFiles = await glob(pattern, {
-    cwd: resolvePath(viewsDir),
+    cwd: resolve(sourceFolderPath, viewsDir),
     onlyFiles: true,
     absolute: true,
     unique: true,

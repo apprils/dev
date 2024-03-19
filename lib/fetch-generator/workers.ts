@@ -14,27 +14,29 @@ import indexTpl from "./templates/index.tpl";
 
 const { generateFile } = fileGenerator();
 
-let rootPath: string;
 let sourceFolder: string;
-let fetchDir: string;
+let sourceFolderPath: string;
+let apiDir: string;
+let varDir: string;
 
 export async function bootstrap(data: {
   routes: Route[];
   sourceFolder: string;
-  rootPath: string;
-  cacheDir: string;
+  sourceFolderPath: string;
   apiDir: string;
+  varDir: string;
   importStringifyFrom?: string;
 }) {
-  const { routes, cacheDir, importStringifyFrom } = data;
+  const { routes, importStringifyFrom } = data;
 
-  rootPath = data.rootPath;
   sourceFolder = data.sourceFolder;
-  fetchDir = join(cacheDir, defaults.cache.fetchDir);
+  sourceFolderPath = data.sourceFolderPath;
+  apiDir = data.apiDir;
+  varDir = data.varDir;
 
-  await updateTsconfig(data);
+  await updateTsconfig();
 
-  await generateFile(join(fetchDir, "base.ts"), {
+  await generateFile(join(varDir, defaults.var.fetchDir, "base.ts"), {
     template: baseTpl,
     context: {
       sourceFolder,
@@ -85,7 +87,7 @@ async function generateRouteAssets({
     },
   );
 
-  await generateFile(join(fetchDir, route.file), {
+  await generateFile(join(varDir, defaults.var.fetchDir, route.file), {
     template: fetchDefinitions ? enhancedTpl : simpleTpl,
     context: { ...route, typeDeclarations, fetchDefinitions },
   });
@@ -96,7 +98,7 @@ async function generateIndexFiles({
 }: {
   routes: Route[];
 }) {
-  await generateFile(join(fetchDir, "index.ts"), {
+  await generateFile(join(varDir, defaults.var.fetchDir, "index.ts"), {
     template: indexTpl,
     context: {
       routes,
@@ -104,19 +106,13 @@ async function generateIndexFiles({
   });
 }
 
-async function updateTsconfig({
-  sourceFolder,
-  apiDir,
-}: {
-  sourceFolder: string;
-  apiDir: string;
-}) {
+async function updateTsconfig() {
   const paths = {
     // join is inappropriate here, we need slashes in any environment
-    "@fetch/*": `${fetchDir.replace(rootPath, "..")}/${apiDir}/*`,
+    "@fetch/*": `./${varDir}/${defaults.var.fetchDir}/${apiDir}/*`,
   };
 
-  const tsconfigPath = join(rootPath, sourceFolder, "tsconfig.json");
+  const tsconfigPath = join(sourceFolderPath, "tsconfig.json");
 
   let tsconfig = JSON.parse(await fsx.readFile(tsconfigPath, "utf8"));
 

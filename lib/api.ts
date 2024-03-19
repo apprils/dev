@@ -1,16 +1,20 @@
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 
 import { glob } from "fast-glob";
 import { parse } from "yaml";
 import fsx from "fs-extra";
 
-import { resolvePath, sanitizePath } from "./base";
-import type { RouteSetup, Route } from "./@types";
+import { sanitizePath } from "./base";
+import type { RouteSetup, Route, ResolvedPluginOptions } from "./@types";
+import type { ResolvedConfig } from "vite";
 
-export async function sourceFilesParsers({
-  apiDir,
+export async function sourceFilesParsers(
+  _config: ResolvedConfig,
+  options: ResolvedPluginOptions,
   pattern = "**/*_routes.yml",
-}: { apiDir: string; pattern?: string }) {
+) {
+  const { sourceFolderPath, apiDir } = options;
+
   const parsers: {
     file: string;
     parser: () => Promise<
@@ -19,7 +23,7 @@ export async function sourceFilesParsers({
   }[] = [];
 
   const srcFiles = await glob(pattern, {
-    cwd: resolvePath(apiDir),
+    cwd: resolve(sourceFolderPath, apiDir),
     onlyFiles: true,
     absolute: true,
     unique: true,
@@ -45,7 +49,7 @@ export async function sourceFilesParsers({
 
           const importPath = setup?.file
             ? sanitizePath(setup.file.replace(/\.[^.]+$/, "")).replace(
-                `${resolvePath()}/`,
+                `${sourceFolderPath}/`,
                 "",
               )
             : join(apiDir, name);
@@ -74,7 +78,9 @@ export async function sourceFilesParsers({
             // templates provided by routes are not watched for updates,
             // reading them once at source file parsing
             template = await fsx.readFile(
-              /^\//.test(template) ? template : resolvePath(template),
+              /^\//.test(template)
+                ? template
+                : resolve(sourceFolderPath, template),
               "utf8",
             );
           }
@@ -87,7 +93,7 @@ export async function sourceFilesParsers({
             importName,
             importPath,
             file,
-            fileFullpath: resolvePath(file),
+            fileFullpath: resolve(sourceFolderPath, file),
             meta: JSON.stringify(setup?.meta || {}),
             serialized,
             template,

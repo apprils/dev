@@ -4,6 +4,7 @@ export type PluginOptions = {
   routerDir?: string;
   viewsDir?: string;
   storesDir?: string;
+  varDir?: string;
   useWorkers?: boolean;
   usePolling?: boolean;
   apiAssets?: {
@@ -31,6 +32,7 @@ export type ResolvedPluginOptions = Required<
   Omit<PluginOptions, "crudGenerator">
 > & {
   sourceFolder: string;
+  sourceFolderPath: string;
   crudGenerator?: import("./crud-generator/@types").Options;
 };
 

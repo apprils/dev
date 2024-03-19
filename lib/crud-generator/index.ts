@@ -1,13 +1,12 @@
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 
 import type { ResolvedConfig } from "vite";
 import { glob } from "fast-glob";
-import fsx from "fs-extra";
 import { sortTemplates } from "@appril/crud/templates";
+import fsx from "fs-extra";
 
 import type { ResolvedPluginOptions, BootstrapPayload } from "../@types";
 import type { CustomTemplates, Options, Table } from "./@types";
-import { resolvePath } from "../base";
 import { extractTables } from "./tables";
 
 type Workers = typeof import("./workers");
@@ -17,7 +16,7 @@ export async function crudGenerator(
   options: ResolvedPluginOptions,
   { workerPool }: { workerPool: Workers },
 ) {
-  const { sourceFolder, apiDir } = options;
+  const { sourceFolder, sourceFolderPath, apiDir, varDir } = options;
 
   const {
     base,
@@ -74,8 +73,6 @@ export async function crudGenerator(
     }
   };
 
-  const cacheDir = join(config.cacheDir, base);
-
   // watching custom templates for updates
   for (const [key, map] of Object.entries(customTemplates) as [
     k: keyof CustomTemplates,
@@ -87,7 +84,7 @@ export async function crudGenerator(
 
     if (typeof optedTemplates === "string") {
       const entries = await glob(join(optedTemplates, "**/*"), {
-        cwd: resolvePath(),
+        cwd: sourceFolderPath,
         objectMode: true,
         absolute: false,
         onlyFiles: true,
@@ -102,7 +99,7 @@ export async function crudGenerator(
     }
 
     for (const [name, path] of Object.entries(customMap)) {
-      const file = resolvePath(path);
+      const file = resolve(sourceFolderPath, path);
       tplWatchers[file] = async () => {
         map[name] = {
           file,
@@ -114,15 +111,13 @@ export async function crudGenerator(
 
   // watching schemas for added/removed tables
   for (const schema of schemas) {
-    const file = resolvePath(dbxConfig.base, join(schema, "index.ts"));
+    const file = resolve(
+      sourceFolderPath,
+      join("..", dbxConfig.base, schema, "index.ts"),
+    );
 
     schemaWatchers[file] = async () => {
-      const tables = await extractTables({
-        apiDir,
-        options: options.crudGenerator as Options,
-        config,
-        schema,
-      });
+      const tables = await extractTables(config, options, schema);
 
       for (const table of tables) {
         tableMap[table.basename] = table;
@@ -143,10 +138,10 @@ export async function crudGenerator(
   }
 
   const bootstrapPayload: BootstrapPayload<Workers> = {
-    rootPath: resolvePath(".."),
-    cacheDir,
     apiDir,
+    varDir,
     sourceFolder,
+    sourceFolderPath,
     base,
     dbxBase: dbxConfig.base,
     tables: Object.values(tableMap),
@@ -157,17 +152,14 @@ export async function crudGenerator(
     bootstrapPayload,
     watchHandler,
     watchPatterns: [
-      // watching custom templates;
-      // regenerate all tables modules on change
+      // watching custom templates
       ...Object.keys(tplWatchers),
 
-      // watching schema files for added/removed tables;
-      // extract tables and rebuild schema tables modules on change
+      // also watching schema files for added/removed tables
       ...Object.keys(schemaWatchers),
 
-      // watching api files;
-      // regenerate table modules on change
-      ...[`${resolvePath(apiDir)}/**/*.ts`],
+      // also watching api files
+      ...[`${resolve(sourceFolderPath, apiDir)}/**/*.ts`],
     ],
   };
 }

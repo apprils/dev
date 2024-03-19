@@ -1,4 +1,4 @@
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 
 import type { ResolvedConfig } from "vite";
 import fsx from "fs-extra";
@@ -11,7 +11,6 @@ import type {
   BootstrapPayload,
 } from "../@types";
 
-import { resolvePath } from "../base";
 import { sourceFilesParsers } from "../api";
 
 /** {apiDir}/_routes.yml schema:
@@ -70,7 +69,7 @@ export async function apiGenerator(
   options: ResolvedPluginOptions,
   { workerPool }: { workerPool: Workers },
 ) {
-  const { sourceFolder, apiDir } = options;
+  const { sourceFolder, sourceFolderPath, apiDir, varDir } = options;
 
   const routeMap: Record<string, Route> = {};
   const aliasMap: Record<string, RouteAlias> = {};
@@ -106,16 +105,17 @@ export async function apiGenerator(
 
   // srcWatchers and tplWatchers should be ready by the time configureServer called,
   // so it's safer to run this here rather than inside configResolved
-  for (const [name, file] of Object.entries(customTemplates) as [
+  for (const [name, path] of Object.entries(customTemplates) as [
     name: keyof ApiTemplates,
     file: string,
   ][]) {
-    tplWatchers[resolvePath(file)] = async () => {
-      customTemplates[name] = await fsx.readFile(resolvePath(file), "utf8");
+    const file = resolve(sourceFolderPath, path);
+    tplWatchers[file] = async () => {
+      customTemplates[name] = await fsx.readFile(file, "utf8");
     };
   }
 
-  for (const { file, parser } of await sourceFilesParsers({ apiDir })) {
+  for (const { file, parser } of await sourceFilesParsers(config, options)) {
     srcWatchers[file] = async () => {
       for (const { route, aliases } of await parser()) {
         const { path } = route;
@@ -148,10 +148,10 @@ export async function apiGenerator(
   const bootstrapPayload: BootstrapPayload<Workers> = {
     routes: Object.values(routeMap),
     aliases: Object.values(aliasMap),
-    cacheDir: config.cacheDir,
     apiDir,
+    varDir,
     sourceFolder,
-    rootPath: resolvePath(".."),
+    sourceFolderPath,
     customTemplates,
   };
 

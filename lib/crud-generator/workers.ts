@@ -18,18 +18,18 @@ let defaultTemplates: DefaultTemplates;
 // all these values are static so it's safe to store them at initialization;
 // tables and customTemplates instead are constantly updated
 // so should be provided to workers on every call
-let rootPath: string;
-let cacheDir: string;
 let apiDir: string;
+let varDir: string;
 let sourceFolder: string;
+let sourceFolderPath: string;
 let base: string;
 let dbxBase: string;
 
 export async function bootstrap(data: {
-  rootPath: string;
-  cacheDir: string;
   apiDir: string;
+  varDir: string;
   sourceFolder: string;
+  sourceFolderPath: string;
   base: string;
   dbxBase: string;
   tables: Table[];
@@ -37,10 +37,10 @@ export async function bootstrap(data: {
 }) {
   const { tables, customTemplates } = data;
 
-  rootPath = data.rootPath;
-  cacheDir = data.cacheDir;
   apiDir = data.apiDir;
+  varDir = data.varDir;
   sourceFolder = data.sourceFolder;
+  sourceFolderPath = data.sourceFolderPath;
   base = data.base;
   dbxBase = data.dbxBase;
 
@@ -49,7 +49,7 @@ export async function bootstrap(data: {
 
   // next after templates
   await updateTsconfig();
-  await generateFile(join(cacheDir, "env.d.ts"), "");
+  await generateFile(join(varDir, "env.d.ts"), "");
 
   for (const table of tables) {
     await generateClientModules({ table, customTemplates });
@@ -199,17 +199,17 @@ async function generateClientModules({
       content = render(content, context);
     }
 
-    await generateFile(join(cacheDir, table.basename, file), content);
+    await generateFile(join(varDir, base, table.basename, file), content);
   }
 }
 
 async function updateTsconfig() {
   const paths = {
     // join is inappropriate here, we need slashes in any environment
-    [`${base}/*`]: `${cacheDir.replace(rootPath, "..")}/*`,
+    [`${base}/*`]: `./${varDir}/${base}/*`,
   };
 
-  const tsconfigPath = join(rootPath, sourceFolder, "tsconfig.json");
+  const tsconfigPath = join(sourceFolderPath, "tsconfig.json");
 
   let tsconfig = JSON.parse(await fsx.readFile(tsconfigPath, "utf8"));
 

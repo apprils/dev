@@ -1,24 +1,25 @@
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 
 import type { ResolvedConfig } from "vite";
 import pgts from "@appril/pgts";
 
 import type { Options, Table, TableAssets, TableDeclaration } from "./@types";
+import type { ResolvedPluginOptions } from "../@types";
 
-import { resolvePath } from "../base";
+export async function extractTables(
+  config: ResolvedConfig,
+  options: ResolvedPluginOptions,
+  schema: string,
+) {
+  const { sourceFolderPath, apiDir } = options;
 
-export async function extractTables({
-  apiDir,
-  options,
-  config,
-  schema,
-}: {
-  apiDir: string;
-  options: Options;
-  config: ResolvedConfig;
-  schema: string;
-}) {
-  const { base, dbxConfig, alias = {}, tableFilter, meta } = options;
+  const {
+    base,
+    dbxConfig,
+    alias = {},
+    tableFilter,
+    meta,
+  } = options.crudGenerator as Options;
 
   const tableAssets = (
     table: TableDeclaration,
@@ -33,7 +34,7 @@ export async function extractTables({
       apiPath,
       apiBase: join(config.base, apiDir, apiPath),
       apiFile,
-      apiFileFullpath: resolvePath(apiFile),
+      apiFileFullpath: resolve(sourceFolderPath, apiFile),
     };
 
     return {

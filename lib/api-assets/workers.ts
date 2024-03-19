@@ -16,20 +16,20 @@ import indexTpl from "./templates/index.tpl";
 const { generateFile } = fileGenerator();
 
 let sourceFolder: string;
-let assetsDir: string;
+let varDir: string;
 let importZodErrorHandlerFrom: string | undefined;
 
 export async function bootstrap(data: {
   routes: Route[];
   sourceFolder: string;
-  cacheDir: string;
+  varDir: string;
   typeFiles: TypeFile[];
   importZodErrorHandlerFrom?: string;
 }) {
-  const { cacheDir, routes, typeFiles } = data;
+  const { routes, typeFiles } = data;
 
   sourceFolder = data.sourceFolder;
-  assetsDir = join(cacheDir, defaults.cache.assetsDir);
+  varDir = data.varDir;
   importZodErrorHandlerFrom = data.importZodErrorHandlerFrom;
 
   for (const route of routes) {
@@ -140,7 +140,7 @@ async function generateRouteAssets({
     getSchemaName: (e) => e,
   });
 
-  await generateFile(join(assetsDir, route.file), {
+  await generateFile(join(varDir, defaults.var.apiAssetsDir, route.file), {
     template: assetsTpl,
     context: {
       ...route,
@@ -161,7 +161,7 @@ async function generateIndexFiles({
 }: {
   routes: Route[];
 }) {
-  await generateFile(join(assetsDir, "index.ts"), {
+  await generateFile(join(varDir, defaults.var.apiAssetsDir, "index.ts"), {
     template: indexTpl,
     context: { routes },
   });

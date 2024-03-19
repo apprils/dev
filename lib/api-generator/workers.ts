@@ -8,32 +8,29 @@ import { BANNER } from "../render";
 import routeTpl from "./templates/route.tpl";
 import routesTpl from "./templates/routes.tpl";
 import urlmapTpl from "./templates/urlmap.tpl";
-import cacheTsconfigTpl from "./templates/tsconfig.tpl";
 
 const { generateFile } = fileGenerator();
 
-let rootPath: string;
 let sourceFolder: string;
+let sourceFolderPath: string;
 let assetsDir: string;
 let apiDir: string;
 
 export async function bootstrap(data: {
   routes: Route[];
   aliases: RouteAlias[];
-  cacheDir: string;
   apiDir: string;
+  varDir: string;
   sourceFolder: string;
-  rootPath: string;
+  sourceFolderPath: string;
   customTemplates: ApiTemplates;
 }) {
-  const { routes, cacheDir, customTemplates } = data;
+  const { routes, varDir, customTemplates } = data;
 
-  rootPath = data.rootPath;
   sourceFolder = data.sourceFolder;
-  assetsDir = join(cacheDir, defaults.cache.assetsDir);
+  sourceFolderPath = data.sourceFolderPath;
+  assetsDir = join(varDir, defaults.var.apiAssetsDir);
   apiDir = data.apiDir;
-
-  await updateTsconfig(data);
 
   await generateFile(join(assetsDir, "index.ts"), "export default {}", {
     overwrite: false,
@@ -96,30 +93,11 @@ async function generateIndexFiles(data: {
         apiDir,
         sourceFolder,
         // do not use join here, it is dropping everything before ..
-        assetsDir: assetsDir.replace(rootPath, `${sourceFolder}/..`),
+        assetsDir: assetsDir.replace(sourceFolderPath, ".."),
         routes: routes.sort(routeSorter),
       },
     });
   }
-}
-
-async function updateTsconfig({ cacheDir }: { cacheDir: string }) {
-  const tsconfigFile = join(cacheDir, "tsconfig.json");
-
-  await generateFile(tsconfigFile, {
-    template: cacheTsconfigTpl,
-    context: {
-      sourceFolder,
-      base: join(
-        ...tsconfigFile
-          .replace(rootPath, "")
-          .replace(/^\/+|\/+$/, "")
-          .replace(join(sourceFolder, "tsconfig.json"), "")
-          .split(/\/+/)
-          .map(() => ".."),
-      ),
-    },
-  });
 }
 
 function routeSorter(a: Route | RouteAlias, b: Route | RouteAlias) {

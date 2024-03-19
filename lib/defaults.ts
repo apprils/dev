@@ -3,6 +3,7 @@ export const customizableDefaults = {
   routerDir: "router",
   viewsDir: "views",
   storesDir: "stores",
+  varDir: "var",
   useWorkers: true,
   usePolling: true,
 };
@@ -19,8 +20,8 @@ export const defaults = {
     envStoreFile: "env.ts",
     envRoutesFile: "_000_env_routes.yml",
   },
-  cache: {
+  var: {
     fetchDir: "@fetch",
-    assetsDir: "@assets",
+    apiAssetsDir: "@apiAssets",
   },
 };

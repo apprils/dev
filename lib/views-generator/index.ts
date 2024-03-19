@@ -1,3 +1,5 @@
+import { resolve } from "node:path";
+
 import fsx from "fs-extra";
 
 import type { ResolvedConfig } from "vite";
@@ -9,7 +11,6 @@ import type {
   BootstrapPayload,
 } from "../@types";
 
-import { resolvePath } from "../base";
 import { sourceFilesParsers } from "./parsers";
 
 /** {viewsDir}/_views.yml schema:
@@ -58,7 +59,14 @@ export async function viewsGenerator(
   options: ResolvedPluginOptions,
   { workerPool }: { workerPool: Workers },
 ) {
-  const { sourceFolder, routerDir, storesDir, viewsDir, apiDir } = options;
+  const {
+    sourceFolder,
+    sourceFolderPath,
+    routerDir,
+    storesDir,
+    viewsDir,
+    apiDir,
+  } = options;
 
   const viewMap: Record<string, View> = {};
 
@@ -90,18 +98,16 @@ export async function viewsGenerator(
     }
   };
 
-  for (const [name, file] of Object.entries(
+  for (const [name, path] of Object.entries(
     options.viewsGenerator.templates || {},
   ) as [name: keyof ViewTemplates, file: string][]) {
-    tplWatchers[resolvePath(file)] = async () => {
-      customTemplates[name] = await fsx.readFile(resolvePath(file), "utf8");
+    const file = resolve(sourceFolderPath, path);
+    tplWatchers[file] = async () => {
+      customTemplates[name] = await fsx.readFile(file, "utf8");
     };
   }
 
-  for (const { file, parser } of await sourceFilesParsers({
-    config,
-    viewsDir,
-  })) {
+  for (const { file, parser } of await sourceFilesParsers(config, options)) {
     srcWatchers[file] = async () => {
       for (const { view } of await parser()) {
         viewMap[view.path] = view;

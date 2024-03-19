@@ -24,6 +24,8 @@ export * from "./file-bundler";
 export default async function apprilDevPlugin(
   options: PluginOptions,
 ): Promise<Plugin> {
+  const sourceFolderPath = resolvePath();
+
   const resolvedOptions: ResolvedPluginOptions = {
     ...customizableDefaults,
     apiHandler: {},
@@ -34,7 +36,8 @@ export default async function apprilDevPlugin(
     crudGenerator: undefined,
     ...options,
     // not overridable by options
-    sourceFolder: basename(resolvePath()),
+    sourceFolder: basename(sourceFolderPath),
+    sourceFolderPath,
   };
 
   const outDirSuffix = "client";
