@@ -92,6 +92,10 @@ export default function apprilDevPlugin(options: PluginOptions): Plugin {
       await bootstrap(bootstrapPayload);
 
       apiHandler = apiHandlerFactory(config, resolvedOptions);
+
+      if (config.command === "build") {
+        worker.unref();
+      }
     },
 
     async configureServer(server) {
