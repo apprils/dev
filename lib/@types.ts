@@ -20,7 +20,6 @@ export type PluginOptions = {
   };
   fetchGenerator?: {
     filter?: (route: Route) => boolean;
-    importStringifyFrom?: string;
   };
   viewsGenerator?: {
     templates?: ViewTemplates;

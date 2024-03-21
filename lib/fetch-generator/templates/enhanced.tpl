@@ -1,9 +1,7 @@
-
 import {
   baseurl, apiurl,
-  fetchFactory, useFetchFactory,
-  join, stringify, stringifyParams,
-  withLoader,
+  fetchFactory, fetchOptions,
+  join, stringifyParams, withLoader,
 } from "@fetch/../base";
 
 {{#typeDeclarations}}
@@ -40,40 +38,9 @@ const apiFactory = (
   }
 }
 
-export const useFetch = (
-  opts?: import("@vueuse/core").UseFetchOptions,
-) => {
-
-  {{#fetchDefinitions}}
-  {{#overloads}}
-  function {{method}}(
-    {{paramsType.name}}: {{paramsType.text}},
-    {{payloadType.name}}: import("@fetch/../base").MaybeRef<
-      {{payloadType.text}}
-    >,
-  ): import("@vueuse/core").UseFetchReturn<{{bodyType}}>;
-  {{/overloads}}
-  function {{method}}(
-    ...args: unknown[]
-  ): import("@vueuse/core").UseFetchReturn<{{bodyType}}> {
-    return useFetchFactory<{{bodyType}}>(base, "{{method}}", args, opts)
-  }
-  {{/fetchDefinitions}}
-
-  return {
-    {{#fetchDefinitions}}
-    {{method}},
-    {{/fetchDefinitions}}
-  }
-}
-
-{{#fetchDefinitions}}
-useFetch.{{method}} = useFetch().{{method}}
-{{/fetchDefinitions}}
-
 export const createApi = (
-  opts?: import("@appril/more/fetch").Options,
-) => apiFactory(fetchFactory(base, { stringify, ...opts }));
+  options?: import("@appril/more/fetch").Options,
+) => apiFactory(fetchFactory(base, { ...fetchOptions, ...options }));
 
 export const fetch = createApi()
 
@@ -91,6 +58,5 @@ export default {
   get base() { return base },
   createApi,
   fetch,
-  useFetch,
   withLoader,
 };

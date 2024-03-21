@@ -14,8 +14,7 @@ export async function fetchGenerator(
 ) {
   const { sourceFolder, sourceFolderPath, apiDir, varDir } = options;
 
-  const { filter = (_r: Route) => true, importStringifyFrom } =
-    options.fetchGenerator;
+  const { filter = (_r: Route) => true } = options.fetchGenerator;
 
   const srcWatchers: Record<string, () => Promise<void>> = {};
 
@@ -65,7 +64,6 @@ export async function fetchGenerator(
     varDir,
     sourceFolder,
     sourceFolderPath,
-    importStringifyFrom,
   };
 
   return {

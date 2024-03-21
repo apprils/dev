@@ -25,9 +25,8 @@ export async function bootstrap(data: {
   sourceFolderPath: string;
   apiDir: string;
   varDir: string;
-  importStringifyFrom?: string;
 }) {
-  const { routes, importStringifyFrom } = data;
+  const { routes } = data;
 
   sourceFolder = data.sourceFolder;
   sourceFolderPath = data.sourceFolderPath;
@@ -40,7 +39,6 @@ export async function bootstrap(data: {
     template: baseTpl,
     context: {
       sourceFolder,
-      importStringifyFrom,
     },
   });
 

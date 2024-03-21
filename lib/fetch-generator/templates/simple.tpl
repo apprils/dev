@@ -1,17 +1,15 @@
-
 import {
-  fetchFactory,
   baseurl, apiurl,
-  join, stringify,
-  withLoader,
+  fetchFactory, fetchOptions,
+  join, withLoader,
 } from "@fetch/../base";
 
 export const name = "{{name}}";
 export const base = join(baseurl, apiurl, "{{path}}");
 
 export const createApi = (
-  opts?: import("@appril/more/fetch").Options,
-) => fetchFactory(base, { stringify, ...opts });
+  options?: import("@appril/more/fetch").Options,
+) => fetchFactory(base, { ...fetchOptions, ...options });
 
 export const fetch = createApi()
 
