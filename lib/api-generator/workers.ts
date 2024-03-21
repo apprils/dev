@@ -7,7 +7,6 @@ import { BANNER } from "../render";
 
 import routeTpl from "./templates/route.tpl";
 import routesTpl from "./templates/routes.tpl";
-import urlmapTpl from "./templates/urlmap.tpl";
 
 const { generateFile } = fileGenerator();
 
@@ -81,8 +80,8 @@ async function generateIndexFiles(data: {
   aliases: RouteAlias[];
 }) {
   const fileMap = [
+    // biome-ignore format:
     [defaults.api.routesFile, routesTpl, [...data.routes, ...data.aliases]],
-    [defaults.api.urlmapFile, urlmapTpl, data.routes],
   ] as [string, string, Route[] | RouteAlias[]][];
 
   for (const [outFile, template, routes] of fileMap) {

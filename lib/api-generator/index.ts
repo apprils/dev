@@ -55,7 +55,6 @@ some-route:
  * Generated files:
  *    - {apiDir}/{route}.ts (or {apiDir}/{route}/index.ts if path ends in a slash)
  *    - {apiDir}/_routes.ts - importing route files and exporting mapped routes
- *    - {apiDir}/_urlmap.ts
  *
  * @param {object} [opts={}] - options
  * @param {string} [opts.apiDir="api"] - path to api folder where to place generated files

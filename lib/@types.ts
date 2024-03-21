@@ -100,7 +100,6 @@ export type Route = {
   template?: string;
 };
 
-// aliases are not reflected in in urlmap
 export type RouteAlias = Omit<Route, "serialized">;
 
 export type ApiTemplates = {

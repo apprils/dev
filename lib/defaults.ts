@@ -11,12 +11,10 @@ export const customizableDefaults = {
 export const defaults = {
   api: {
     routesFile: "_routes.ts",
-    urlmapFile: "_urlmap.ts",
   },
   views: {
     routesFile: "_routes.ts",
     routesDtsFile: "_routes.d.ts",
-    urlmapFile: "_urlmap.ts",
     envStoreFile: "env.ts",
     envRoutesFile: "_000_env_routes.yml",
   },

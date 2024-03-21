@@ -10,7 +10,6 @@ import { typedRoutes } from "./typed-routes";
 import viewTpl from "./templates/view.tpl";
 import routesTpl from "./templates/routes.tpl";
 import typedRoutesTpl from "./templates/typed-routes.tpl";
-import urlmapTpl from "./templates/urlmap.tpl";
 import envStoreTpl from "./templates/env-store.tpl";
 import { defaults } from "../defaults";
 
@@ -95,8 +94,8 @@ async function generateIndexFiles(data: { views: View[] }) {
   });
 
   for (const [outfile, template] of [
+    // biome-ignore format:
     [defaults.views.routesFile, routesTpl],
-    [defaults.views.urlmapFile, urlmapTpl],
   ]) {
     await generateFile(join(routerDir, outfile), {
       template,
