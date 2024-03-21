@@ -4,13 +4,13 @@ import { Worker } from "node:worker_threads";
 import * as apiGenerator from "./api-generator/workers";
 import * as apiAssets from "./api-assets/workers";
 import * as fetchGenerator from "./fetch-generator/workers";
-import * as viewsGenerator from "./views-generator/workers";
+import * as vuePages from "./vue-pages/workers";
 import * as crudGenerator from "./crud-generator/workers";
 
 export const workerMap = {
   crudGenerator,
   fetchGenerator,
-  viewsGenerator,
+  vuePages,
   apiAssets,
   apiGenerator,
 } as const;
@@ -29,14 +29,14 @@ export async function bootstrapWorker(
     /** order is highly important!
      * so using array rather than iterating over workerMap */
     /** 000 */ "crudGenerator",
-    /** 001 */ "viewsGenerator",
+    /** 001 */ "vuePages",
     /** 002 */ "fetchGenerator",
     /** 003 */ "apiGenerator",
     /** 004 */ "apiAssets",
   ] as const;
 
   for (const generator of generators) {
-    // only bootstrap generators defined in payload
+    // bootstrap only generators defined in payload
     if (payload[generator]) {
       await workerPool[generator].bootstrap(payload[generator]);
     }

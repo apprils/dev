@@ -6,29 +6,29 @@ import type { ResolvedConfig } from "vite";
 
 import type {
   ResolvedPluginOptions,
-  View,
-  ViewTemplates,
+  VuePage,
+  VuePageTemplates,
   BootstrapPayload,
 } from "../@types";
 
 import { sourceFilesParsers } from "./parsers";
 
-/** {viewsDir}/_views.yml schema:
+/** {pagesDir}/_pages.yml schema:
 
-some-view:
-# will generate {viewsDir}/some-view.vue
+some-page:
+# will generate {pagesDir}/some-page.vue
 
-another-view/:
-# will generate {viewsDir}/another-view/another-view.vue
+another-page/:
+# will generate {pagesDir}/another-page/another-page.vue
 
-another-view/base:
-# will generate {viewsDir}/another-view/base.vue
+another-page/base:
+# will generate {pagesDir}/another-page/base.vue
 
 some-page.html:
-# will generate {viewsDir}/some-page.html.vue
+# will generate {pagesDir}/some-page.html.vue
 
 # provide meta
-some-view:
+some-page:
   meta:
     restricted: true
     privileges:
@@ -36,17 +36,17 @@ some-view:
 */
 
 /**
- * Generates various files based on {viewsDir}/_views.yml
+ * Generates various files based on {pagesDir}/_pages.yml
  *
  * Generated files:
- *    - {viewsDir}/{view}.vue (or {viewsDir}/{view}/{view}.vue if path ends in a slash)
+ *    - {pagesDir}/{page}.vue (or {pagesDir}/{page}/{page}.vue if path ends in a slash)
  *    - {routerDir}/_routes.ts
  *    - {routerDir}/_routes.d.ts
  *    - {storesDir}/env.ts
  *
  * @param {Object} [opts={}] - options
  * @param {string} [opts.routerDir="router"] - path to routes folder
- * @param {string} [opts.viewsDir="views"] - path to views folder (should contain _views.yml file)
+ * @param {string} [opts.pagesDir="pages"] - path to pages folder (should contain _pages.yml file)
  * @param {string} [opts.storesDir="stores"] - path to stores folder
  * @param {string} [opts.apiDir="api"] - path to api folder
  * @param {object} [opts.templates={}] - custom templates
@@ -54,7 +54,7 @@ some-view:
 
 type Workers = typeof import("./workers");
 
-export async function viewsGenerator(
+export async function vuePages(
   config: ResolvedConfig,
   options: ResolvedPluginOptions,
   { workerPool }: { workerPool: Workers },
@@ -64,33 +64,33 @@ export async function viewsGenerator(
     sourceFolderPath,
     routerDir,
     storesDir,
-    viewsDir,
+    pagesDir,
     apiDir,
   } = options;
 
-  const viewMap: Record<string, View> = {};
+  const pageMap: Record<string, VuePage> = {};
 
   const tplWatchers: Record<string, () => Promise<void>> = {};
   const srcWatchers: Record<string, () => Promise<void>> = {};
 
-  const customTemplates: ViewTemplates = {};
+  const customTemplates: VuePageTemplates = {};
 
   const watchHandler = async (file: string) => {
     if (tplWatchers[file]) {
-      // updating templates; to be used on newly added views only
+      // updating templates; to be used on newly added pages only
       // so no need to update anything here
       await tplWatchers[file]();
       return;
     }
 
     if (srcWatchers[file]) {
-      // updating viewMap
+      // updating pageMap
       await srcWatchers[file]();
 
       // then feeding it to worker
       await workerPool.handleSrcFileUpdate({
         file,
-        views: Object.values(viewMap),
+        pages: Object.values(pageMap),
         customTemplates,
       });
 
@@ -99,8 +99,8 @@ export async function viewsGenerator(
   };
 
   for (const [name, path] of Object.entries(
-    options.viewsGenerator.templates || {},
-  ) as [name: keyof ViewTemplates, file: string][]) {
+    options.vuePages.templates || {},
+  ) as [name: keyof VuePageTemplates, file: string][]) {
     const file = resolve(sourceFolderPath, path);
     tplWatchers[file] = async () => {
       customTemplates[name] = await fsx.readFile(file, "utf8");
@@ -109,8 +109,8 @@ export async function viewsGenerator(
 
   for (const { file, parser } of await sourceFilesParsers(config, options)) {
     srcWatchers[file] = async () => {
-      for (const { view } of await parser()) {
-        viewMap[view.path] = view;
+      for (const { page } of await parser()) {
+        pageMap[page.path] = page;
       }
     };
   }
@@ -126,11 +126,11 @@ export async function viewsGenerator(
   }
 
   const bootstrapPayload: BootstrapPayload<Workers> = {
-    views: Object.values(viewMap),
+    pages: Object.values(pageMap),
     sourceFolder,
     routerDir,
     storesDir,
-    viewsDir,
+    pagesDir,
     apiDir,
     customTemplates,
   };

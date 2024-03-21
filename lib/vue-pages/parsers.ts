@@ -6,22 +6,22 @@ import { parse } from "yaml";
 import fsx from "fs-extra";
 
 import { sanitizePath } from "../base";
-import type { ResolvedPluginOptions, View, ViewSetup } from "../@types";
+import type { ResolvedPluginOptions, VuePage, VuePageSetup } from "../@types";
 
 export async function sourceFilesParsers(
   config: ResolvedConfig,
   options: ResolvedPluginOptions,
-  pattern = "**/*_views.yml",
+  pattern = "**/*_pages.yml",
 ) {
-  const { sourceFolderPath, viewsDir } = options;
+  const { sourceFolderPath, pagesDir } = options;
 
   const parsers: {
     file: string;
-    parser: () => Promise<{ view: View }[]>;
+    parser: () => Promise<{ page: VuePage }[]>;
   }[] = [];
 
   const srcFiles = await glob(pattern, {
-    cwd: resolve(sourceFolderPath, viewsDir),
+    cwd: resolve(sourceFolderPath, pagesDir),
     onlyFiles: true,
     absolute: true,
     unique: true,
@@ -31,13 +31,13 @@ export async function sourceFilesParsers(
     parsers.push({
       file: srcFile,
       async parser() {
-        const viewDefs = parse(await fsx.readFile(srcFile, "utf8"));
+        const pageDefs = parse(await fsx.readFile(srcFile, "utf8"));
 
-        const entries: { view: View }[] = [];
+        const entries: { page: VuePage }[] = [];
 
-        for (const [_path, setup] of Object.entries(viewDefs) as [
+        for (const [_path, setup] of Object.entries(pageDefs) as [
           string,
-          ViewSetup,
+          VuePageSetup,
         ][]) {
           const importPath = sanitizePath(_path).replace(/\/+$/, "");
 
@@ -58,7 +58,7 @@ export async function sourceFilesParsers(
             envApi = join(_path, "env");
           }
 
-          const view: View = {
+          const page: VuePage = {
             srcFile,
             name: importPath,
             importName: importPath.replace(/\W/g, "_"),
@@ -72,11 +72,11 @@ export async function sourceFilesParsers(
           };
 
           const serialized = JSON.stringify({
-            name: view.name,
-            path: view.path,
+            name: page.name,
+            path: page.path,
           });
 
-          entries.push({ view: { ...view, serialized } });
+          entries.push({ page: { ...page, serialized } });
         }
 
         return entries;

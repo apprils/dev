@@ -2,12 +2,12 @@ import { join } from "node:path";
 
 import { stringify } from "yaml";
 
-import type { View, ViewTemplates } from "../@types";
+import type { VuePage, VuePageTemplates } from "../@types";
 import { BANNER } from "../render";
 import { fileGenerator } from "../base";
 import { typedRoutes } from "./typed-routes";
 
-import viewTpl from "./templates/view.tpl";
+import pageTpl from "./templates/page.tpl";
 import routesTpl from "./templates/routes.tpl";
 import typedRoutesTpl from "./templates/typed-routes.tpl";
 import envStoreTpl from "./templates/env-store.tpl";
@@ -18,28 +18,28 @@ const { generateFile } = fileGenerator();
 let sourceFolder: string;
 let routerDir: string;
 let storesDir: string;
-let viewsDir: string;
+let pagesDir: string;
 let apiDir: string;
 
 export async function bootstrap(data: {
-  views: View[];
+  pages: VuePage[];
   sourceFolder: string;
   routerDir: string;
   storesDir: string;
-  viewsDir: string;
+  pagesDir: string;
   apiDir: string;
-  customTemplates: ViewTemplates;
+  customTemplates: VuePageTemplates;
 }) {
   const { customTemplates } = data;
 
   sourceFolder = data.sourceFolder;
   routerDir = data.routerDir;
   storesDir = data.storesDir;
-  viewsDir = data.viewsDir;
+  pagesDir = data.pagesDir;
   apiDir = data.apiDir;
 
-  for (const view of data.views) {
-    await generateViewFiles({ view, customTemplates });
+  for (const page of data.pages) {
+    await generateVuePageFiles({ page, customTemplates });
   }
 
   await generateIndexFiles(data);
@@ -47,81 +47,81 @@ export async function bootstrap(data: {
 
 export async function handleSrcFileUpdate({
   file,
-  views,
+  pages,
   customTemplates,
-}: { file: string; views: View[]; customTemplates: ViewTemplates }) {
-  // making sure newly added views have files generated
-  for (const view of views.filter((e) => e.srcFile === file)) {
-    await generateViewFiles({ view, customTemplates });
+}: { file: string; pages: VuePage[]; customTemplates: VuePageTemplates }) {
+  // making sure newly added pages have files generated
+  for (const page of pages.filter((e) => e.srcFile === file)) {
+    await generateVuePageFiles({ page, customTemplates });
   }
 
-  await generateIndexFiles({ views });
+  await generateIndexFiles({ pages });
 }
 
-async function generateViewFiles({
-  view,
+async function generateVuePageFiles({
+  page,
   customTemplates,
-}: { view: View; customTemplates: ViewTemplates }) {
+}: { page: VuePage; customTemplates: VuePageTemplates }) {
   await generateFile(
-    join(viewsDir, view.file),
+    join(pagesDir, page.file),
     {
-      template: customTemplates.view || viewTpl,
-      context: {},
+      template: customTemplates.page || pageTpl,
+      context: page,
     },
     { overwrite: false },
   );
 }
 
-async function generateIndexFiles(data: { views: View[] }) {
-  const views = data.views.sort((a, b) => a.name.localeCompare(b.name));
+async function generateIndexFiles(data: { pages: VuePage[] }) {
+  const pages = data.pages.sort((a, b) => a.name.localeCompare(b.name));
 
-  await generateFile(join(routerDir, defaults.views.routesDtsFile), {
+  await generateFile(join(routerDir, defaults.vuePages.routesDtsFile), {
     template: typedRoutesTpl,
     context: {
       BANNER,
-      routes: typedRoutes(views),
+      routes: typedRoutes(pages),
     },
   });
 
-  await generateFile(join(storesDir, defaults.views.envStoreFile), {
+  await generateFile(join(storesDir, defaults.vuePages.envStoreFile), {
     template: envStoreTpl,
     context: {
       BANNER,
       sourceFolder,
       apiDir,
-      viewsWithEnvApi: views.filter((e) => e.envApi),
+      pagesWithEnvApi: pages.filter((e) => e.envApi),
     },
   });
 
   for (const [outfile, template] of [
     // biome-ignore format:
-    [defaults.views.routesFile, routesTpl],
+    [defaults.vuePages.routesFile, routesTpl],
   ]) {
     await generateFile(join(routerDir, outfile), {
       template,
       context: {
         BANNER,
         sourceFolder,
-        views,
-        viewsDir,
+        pages,
+        pagesDir,
         storesDir,
       },
     });
   }
 
   {
-    const reducer = (map: Record<string, object>, view: View) => {
-      if (view.envApi) {
-        map[view.envApi] = {};
+    const reducer = (map: Record<string, object>, page: VuePage) => {
+      if (page.envApi) {
+        map[page.envApi] = {};
       }
       return map;
     };
 
     const content = [
       BANNER.trim().replace(/^/gm, "#"),
-      stringify(views.reduce(reducer, {})),
+      stringify(pages.reduce(reducer, {})),
     ].join("\n");
 
-    await generateFile(join(apiDir, defaults.views.envRoutesFile), content);
+    await generateFile(join(apiDir, defaults.vuePages.envRoutesFile), content);
   }
 }

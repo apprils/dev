@@ -2,7 +2,7 @@ export type PluginOptions = {
   esbuildConfig: import("esbuild").BuildOptions;
   apiDir?: string;
   routerDir?: string;
-  viewsDir?: string;
+  pagesDir?: string;
   storesDir?: string;
   varDir?: string;
   useWorkers?: boolean;
@@ -21,8 +21,8 @@ export type PluginOptions = {
   fetchGenerator?: {
     filter?: (route: Route) => boolean;
   };
-  viewsGenerator?: {
-    templates?: ViewTemplates;
+  vuePages?: {
+    templates?: VuePageTemplates;
   };
   crudGenerator?: import("./crud-generator/@types").Options;
 };
@@ -106,14 +106,14 @@ export type ApiTemplates = {
   route?: string;
 };
 
-export type ViewSetup = {
+export type VuePageSetup = {
   params?: string;
   env?: string | boolean;
   meta?: Record<string, unknown>;
   options?: Record<string, unknown>;
 };
 
-export type View = {
+export type VuePage = {
   srcFile: string;
   name: string;
   importName: string;
@@ -127,9 +127,11 @@ export type View = {
   serialized?: string;
 };
 
-export type ViewTemplates = {
-  view?: string;
+export type VuePageTemplates = {
+  page?: string;
 };
 
-export type BootstrapPayload<T extends { bootstrap: (_p: never) => void }> =
-  Parameters<T["bootstrap"]>[0];
+// biome-ignore format:
+export type BootstrapPayload<
+  T extends { bootstrap: (_p: never) => void }
+> = Parameters<T["bootstrap"]>[0];

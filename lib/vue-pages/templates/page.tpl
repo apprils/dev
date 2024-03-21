@@ -3,6 +3,6 @@
 </script>
 
 <template>
-  Automatically generated view: [ {{name}} ]
+  Automatically generated page: [ {{name}} ]
 </template>
 

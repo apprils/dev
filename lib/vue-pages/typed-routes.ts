@@ -1,4 +1,4 @@
-import type { View } from "../@types";
+import type { VuePage } from "../@types";
 
 type Param = {
   name: string;
@@ -8,13 +8,13 @@ type Param = {
   type: string;
 };
 
-export function typedRoutes(views: View[]) {
-  return views.map(typedRoute);
+export function typedRoutes(pages: VuePage[]) {
+  return pages.map(typedRoute);
 }
 
-function typedRoute(view: View): View & { typedParams: string } {
-  const params: Param[] = extractParams(view);
-  return { ...view, typedParams: typedParams(params).join(", ") };
+function typedRoute(page: VuePage): VuePage & { typedParams: string } {
+  const params: Param[] = extractParams(page);
+  return { ...page, typedParams: typedParams(params).join(", ") };
 }
 
 function typedParams(params: Param[]): string[] {
@@ -28,8 +28,8 @@ function typedParamsMapper(params: Param[], isRaw: boolean): string {
   return `{ ${params.map(mapper).join(", ")} }`;
 }
 
-function extractParams(view: View): Param[] {
-  return view.params
+function extractParams(page: VuePage): Param[] {
+  return page.params
     .split(/(:[^/]+)/)
     .filter((e) => e[0] === ":")
     .map(paramMapper);

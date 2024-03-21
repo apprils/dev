@@ -1,7 +1,7 @@
 export const customizableDefaults = {
   apiDir: "api",
   routerDir: "router",
-  viewsDir: "views",
+  pagesDir: "pages",
   storesDir: "stores",
   varDir: "var",
   useWorkers: true,
@@ -12,7 +12,7 @@ export const defaults = {
   api: {
     routesFile: "_routes.ts",
   },
-  views: {
+  vuePages: {
     routesFile: "_routes.ts",
     routesDtsFile: "_routes.d.ts",
     envStoreFile: "env.ts",

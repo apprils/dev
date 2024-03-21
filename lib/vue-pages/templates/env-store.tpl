@@ -5,17 +5,17 @@ import { defineStore } from "pinia";
 import fetch from "@fetch/../index";
 
 export type State = {
-{{#viewsWithEnvApi}}
+{{#pagesWithEnvApi}}
   "{{name}}": Awaited<ReturnType<typeof fetch["{{name}}"]["get"]>> | undefined;
-{{/viewsWithEnvApi}}
+{{/pagesWithEnvApi}}
 }
 
 export const key = Symbol() as import("vue").InjectionKey<State>;
 
 const fetchMap = {
-{{#viewsWithEnvApi}}
+{{#pagesWithEnvApi}}
   "{{name}}": fetch["{{envApi}}"].get,
-{{/viewsWithEnvApi}}
+{{/pagesWithEnvApi}}
 }
 
 export default defineStore({
@@ -24,9 +24,9 @@ export default defineStore({
 
   state(): State {
     return {
-    {{#viewsWithEnvApi}}
+    {{#pagesWithEnvApi}}
       "{{name}}": undefined,
-    {{/viewsWithEnvApi}}
+    {{/pagesWithEnvApi}}
     }
   },
 

@@ -11,8 +11,8 @@ import { workerFactory } from "./worker-pool";
 import { apiHandlerFactory } from "./api-handler";
 import { apiGenerator } from "./api-generator";
 import { apiAssets } from "./api-assets";
+import { vuePages } from "./vue-pages";
 import { fetchGenerator } from "./fetch-generator";
-import { viewsGenerator } from "./views-generator";
 import { crudGenerator } from "./crud-generator";
 
 export type { PluginOptions, ResolvedPluginOptions };
@@ -21,9 +21,7 @@ export * from "./define";
 export * from "./vue-plugin-generator";
 export * from "./file-bundler";
 
-export default async function apprilDevPlugin(
-  options: PluginOptions,
-): Promise<Plugin> {
+export default function apprilDevPlugin(options: PluginOptions): Plugin {
   const sourceFolderPath = resolvePath();
 
   const resolvedOptions: ResolvedPluginOptions = {
@@ -32,7 +30,7 @@ export default async function apprilDevPlugin(
     apiAssets: {},
     apiGenerator: {},
     fetchGenerator: {},
-    viewsGenerator: {},
+    vuePages: {},
     crudGenerator: undefined,
     ...options,
     // not overridable by options
@@ -75,9 +73,9 @@ export default async function apprilDevPlugin(
 
       const plugins = [
         fetchGenerator,
-        viewsGenerator,
         apiAssets,
         apiGenerator,
+        ...(resolvedOptions.vuePages ? [vuePages] : []),
         ...(resolvedOptions.crudGenerator ? [crudGenerator] : []),
       ];
 
